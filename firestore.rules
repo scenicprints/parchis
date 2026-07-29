@@ -1,0 +1,29 @@
+// ═══════════════════════════════════════════════════════════════════════
+//  Firestore rules for the foos-6ecf3 project.
+//
+//  Parchís reuses the project the foos league already runs in, so it only
+//  needs one extra match block. If your console already has rules for
+//  /leagues, ADD the /parchis block to them rather than replacing the file.
+//
+//  Console → Firestore Database → Rules → paste → Publish.
+// ═══════════════════════════════════════════════════════════════════════
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── The foos league, already there. Keep whatever you have. ──────
+    match /leagues/{doc=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Parchís. Two documents: "table" and "game". ──────────────────
+    // Anyone signed in can read and write them. That is the right level
+    // of trust for a board only the two of you can find, and it means
+    // neither phone needs an account or a password.
+    match /parchis/{doc} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

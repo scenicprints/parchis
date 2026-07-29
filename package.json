@@ -1,0 +1,13 @@
+{
+  "name": "parchis",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Parchís for two, playable from anywhere, installable on any phone.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/rules.test.mjs",
+    "serve": "node scripts/serve.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "preview": "node scripts/board-preview.mjs"
+  }
+}

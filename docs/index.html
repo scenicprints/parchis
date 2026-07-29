@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <title>Parchís</title>
+  <meta name="description" content="Parchís, two players, one board, from anywhere.">
+
+  <!-- Runs full-screen with no browser bars once it is added to a home screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Parchís">
+  <meta name="theme-color" content="#0E1116">
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <!-- ?v= is bumped on every deploy so phones never run a stale copy -->
+  <link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+
+<div id="app" class="hidden">
+
+  <header class="bar">
+    <div class="seat" id="seat-mine">
+      <i class="chip" id="chip-mine"></i>
+      <span class="nm" id="name-mine">—</span>
+    </div>
+    <div class="score" id="score">0 – 0</div>
+    <div class="seat right" id="seat-theirs">
+      <span class="nm" id="name-theirs">—</span>
+      <i class="chip" id="chip-theirs"></i>
+    </div>
+    <button class="menub" id="btn-menu" aria-label="Menu">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+      </svg>
+    </button>
+  </header>
+
+  <div class="stage">
+    <svg id="board" viewBox="0 0 19 19" xmlns="http://www.w3.org/2000/svg" aria-label="Parchís board"></svg>
+  </div>
+
+  <footer class="panel">
+    <div class="status" id="status">Connecting</div>
+    <div class="controls">
+      <div class="dicebar" id="dicebar"></div>
+      <button class="roll" id="btn-roll" disabled>Roll</button>
+    </div>
+    <div class="lastline" id="lastline"></div>
+  </footer>
+
+</div>
+
+<!-- ───── First run: pick a seat ───── -->
+<div id="seatpick" class="overlay hidden">
+  <div class="card">
+    <h1>Parchís</h1>
+    <p class="sub">Take a side. Whoever opens this next takes the other.</p>
+    <label class="field">
+      <span>Your name</span>
+      <input id="seat-name" type="text" maxlength="14" autocomplete="given-name" placeholder="Name">
+    </label>
+    <div class="seats">
+      <button class="seatbtn red" data-color="red">
+        <i class="chip"></i>
+        <span class="lbl">Red</span>
+        <span class="who" id="who-red">Open</span>
+      </button>
+      <button class="seatbtn blue" data-color="blue">
+        <i class="chip"></i>
+        <span class="lbl">Blue</span>
+        <span class="who" id="who-blue">Open</span>
+      </button>
+    </div>
+    <div class="err" id="seat-err"></div>
+  </div>
+</div>
+
+<div id="sheet-root"></div>
+
+<div id="boot"><div class="wm">Parchís</div></div>
+<div id="fatal" class="hidden"></div>
+
+<script type="module" src="app.js?v=1"></script>
+</body>
+</html>
