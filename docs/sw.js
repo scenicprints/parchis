@@ -2,7 +2,7 @@
 // no signal. Only our own files are cached; Firebase always goes to the
 // network, and Firestore does its own offline work underneath us.
 
-const CACHE = 'parchis-v1';
+const CACHE = 'parchis-v2';
 const SHELL = [
   './',
   'index.html',
@@ -40,8 +40,17 @@ self.addEventListener('fetch', (e) => {
 
   // Network first, so a deploy lands as soon as there is a signal, with the
   // cached copy standing in whenever there is not.
+  //
+  // The page itself is fetched past the HTTP cache. GitHub Pages serves with
+  // a ten-minute max-age, and "network first" through a browser cache is
+  // just the stale copy wearing a network hat: the page comes back old, it
+  // points at old ?v= files, and a deploy sits invisible for ten minutes.
+  // Everything else keeps normal caching; the ?v= stamp does its busting.
+  const isPage = e.request.mode === 'navigate' ||
+                 e.request.destination === 'document';
+
   e.respondWith(
-    fetch(e.request)
+    fetch(isPage ? new Request(e.request.url, { cache: 'no-store' }) : e.request)
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
