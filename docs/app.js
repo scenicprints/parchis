@@ -30,6 +30,7 @@ let myColor = null;
 let sel = null;        // the pawn the player has tapped
 let lastRoll = 0;      // so the dice only tumble on a fresh roll
 let thinking = false;  // the computer is mid-turn; keep hands off the board
+let nudging = false;   // a forced move is being pushed along; do not stack them
 
 // Playing the computer is a local-only affair: it takes blue, you take red.
 // Kept in this device's own storage, so it never travels to the other phone.
@@ -360,7 +361,17 @@ function renderMoves(mine) {
   if (thinking || !mine || game.winner || game.phase !== 'move') return;
 
   const acts = distinctActions(legalActions(game));
-  if (acts.length < 2) return;
+  if (acts.length < 2) {
+    // A forced move is normally gone before this ever draws — autoPlay takes
+    // it the moment the dice land. But if that chain is ever interrupted, the
+    // player would be left with a dead Roll button and nothing to press. Give
+    // it a push instead of showing them a dead end.
+    if (acts.length === 1 && !nudging) {
+      nudging = true;
+      setTimeout(() => { nudging = false; autoPlay(); }, 0);
+    }
+    return;
+  }
 
   for (const a of acts) {
     const b = document.createElement('button');
