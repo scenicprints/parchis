@@ -82,9 +82,10 @@ function svg(tag, attrs = {}, parent = null) {
   return node;
 }
 
-const TINT = { red: '#E4443A', blue: '#3D8BFD', green: '#3FAE63', yellow: '#E3B23C' };
-const EDGE = { red: '#8E241D', blue: '#1B4C96', green: '#1F6B39', yellow: '#8A6614' };
-const DIM  = '#2E3A47';                 // an arm nobody is playing
+const TINT  = { red: '#E4443A', blue: '#3D8BFD', green: '#3FAE63', yellow: '#E3B23C' };
+const EDGE  = { red: '#8E241D', blue: '#1B4C96', green: '#1F6B39', yellow: '#8A6614' };
+const LIGHT = { red: '#FF8B7B', blue: '#8FBCFF', green: '#8BDFA6', yellow: '#F8DE8C' };
+const DIM   = '#2E3A47';                // an arm nobody is playing
 
 // Who is in this game. Two-handed until a roster says otherwise.
 let PLAYED = new Set(TWO);
@@ -104,7 +105,48 @@ function buildBoard(roster = TWO) {
   board.innerHTML = '';
   pawnNodes = {};
 
+  // Half a square of margin all round, for the rim the board now sits in.
+  board.setAttribute('viewBox', '-0.6 -0.6 20.2 20.2');
+
+  // ── Paint, mixed once ────────────────────────────────────────────
+  // Every gradient the board uses, defined up front so each cell is still a
+  // single element. The look comes from the paint, not from more geometry.
+  const defs = svg('defs', {}, board);
+  const stops = (g, list) => {
+    for (const [offset, color, op] of list) {
+      svg('stop', { offset, 'stop-color': color,
+        ...(op !== undefined ? { 'stop-opacity': op } : {}) }, g);
+    }
+  };
+  const lin = (id, list, x1 = 0, y1 = 0, x2 = 0, y2 = 1) =>
+    stops(svg('linearGradient', { id, x1, y1, x2, y2 }, defs), list);
+  const rad = (id, list, attrs = {}) =>
+    stops(svg('radialGradient', { id, ...attrs }, defs), list);
+
+  lin('brd-frame', [['0', '#E7C371'], ['0.45', '#A87B33'], ['1', '#6E4D1B']]);
+  rad('brd-surface', [['0', '#182028'], ['1', '#0F141B']],
+      { cx: 0.5, cy: 0.42, r: 0.75 });
+  lin('brd-cell', [['0', '#252E3A'], ['1', '#1A212A']]);
+  rad('brd-centre', [['0', '#1B2432'], ['1', '#0C1017']]);
+  rad('brd-jewel', [['0', '#FFEDB0'], ['1', '#C79A34']], { cx: 0.4, cy: 0.35, r: 0.8 });
+  rad('brd-well', [['0', '#0E1520'], ['1', '#070A0F']]);
+  for (const c of ORDER) {
+    // A tile of the colour, lit from above…
+    lin(`tile-${c}`, [['0', LIGHT[c]], ['0.35', TINT[c]], ['1', EDGE[c]]]);
+    // …and a game piece of the colour, lit from the upper left.
+    rad(`pawn-${c}`, [['0', LIGHT[c]], ['0.55', TINT[c]], ['1', EDGE[c]]],
+        { cx: 0.36, cy: 0.3, r: 0.9 });
+  }
+
   gRoot = svg('g', {}, board);
+
+  // ── The rim and the table ────────────────────────────────────────
+  svg('rect', { x: -0.56, y: -0.56, width: 20.12, height: 20.12, rx: 0.95,
+    fill: 'url(#brd-frame)' }, gRoot);
+  svg('rect', { x: -0.5, y: -0.5, width: 20, height: 20, rx: 0.9,
+    fill: 'none', stroke: 'rgba(0,0,0,.38)', 'stroke-width': 0.05 }, gRoot);
+  svg('rect', { x: -0.3, y: -0.3, width: 19.6, height: 19.6, rx: 0.75,
+    fill: 'url(#brd-surface)', stroke: 'rgba(0,0,0,.55)', 'stroke-width': 0.07 }, gRoot);
 
   const cells = svg('g', {}, gRoot);
 
@@ -114,19 +156,28 @@ function buildBoard(roster = TWO) {
     const live = PLAYED.has(color);
     svg('rect', {
       x: b.x + 0.35, y: b.y + 0.35, width: 7.3, height: 7.3, rx: 1.1,
-      fill: live ? TINT[color] : '#141A22',
-      'fill-opacity': live ? 0.16 : 1,
-      stroke: live ? TINT[color] : '#1D2530',
+      fill: live ? TINT[color] : '#131820',
+      'fill-opacity': live ? 0.15 : 1,
+      stroke: live ? TINT[color] : '#1C242F',
       'stroke-opacity': live ? 0.55 : 1,
       'stroke-width': 0.09,
     }, cells);
 
     if (!live) continue;
+    // A quiet second line inside the wall, the way a printed board rules
+    // its corners twice.
+    svg('rect', {
+      x: b.x + 0.62, y: b.y + 0.62, width: 6.76, height: 6.76, rx: 0.9,
+      fill: 'none', stroke: TINT[color], 'stroke-opacity': 0.2,
+      'stroke-width': 0.05,
+    }, cells);
+
     for (const s of nestSlots(color)) {
+      // A socket a piece visibly sits in, not a flat disc.
       svg('circle', {
-        cx: s.x + 0.5, cy: s.y + 0.5, r: 0.44,
-        fill: '#0D1219', stroke: TINT[color], 'stroke-opacity': 0.4,
-        'stroke-width': 0.07,
+        cx: s.x + 0.5, cy: s.y + 0.5, r: 0.46,
+        fill: 'url(#brd-well)', stroke: TINT[color],
+        'stroke-opacity': 0.45, 'stroke-width': 0.06,
       }, cells);
     }
   }
@@ -141,22 +192,26 @@ function buildBoard(roster = TWO) {
     const safe = SAFE.has(i);
 
     svg('rect', {
-      x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.2,
-      fill: live ? TINT[owner] : '#1B222C',
-      'fill-opacity': live ? 0.5 : 1,
-      stroke: safe ? '#E8C05A' : '#232B36',
-      'stroke-opacity': safe ? 0.9 : 1,
-      'stroke-width': safe ? 0.09 : 0.05,
+      x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.24,
+      fill: live ? `url(#tile-${owner})` : 'url(#brd-cell)',
+      'fill-opacity': live ? 0.85 : 1,
+      stroke: live ? EDGE[owner] : '#2A3340',
+      'stroke-opacity': live ? 0.8 : 1,
+      'stroke-width': 0.045,
     }, cells);
 
     // Safe squares carry a ring you can pick out at arm's length, the way
-    // they are marked on a printed board. A hairline outline was not enough.
+    // they are marked on a printed board — with a soft halo behind it.
     if (safe) {
       svg('circle', {
         cx: c.x + 0.5, cy: c.y + 0.5, r: 0.3,
         fill: 'none', stroke: '#E8C05A',
-        'stroke-opacity': live ? 0.95 : 0.72,
-        'stroke-width': 0.11,
+        'stroke-opacity': 0.18, 'stroke-width': 0.22,
+      }, cells);
+      svg('circle', {
+        cx: c.x + 0.5, cy: c.y + 0.5, r: 0.3,
+        fill: 'none', stroke: '#E8C05A',
+        'stroke-opacity': live ? 0.95 : 0.8, 'stroke-width': 0.1,
       }, cells);
     }
   });
@@ -166,19 +221,21 @@ function buildBoard(roster = TWO) {
     const live = PLAYED.has(color);
     COLUMN[color].forEach((c, i) => {
       svg('rect', {
-        x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.2,
-        fill: live ? TINT[color] : '#182029',
+        x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.24,
+        fill: live ? `url(#tile-${color})` : '#161C25',
         // The ramp brightens as it approaches the middle.
-        'fill-opacity': live ? 0.3 + (i / (COLUMN[color].length - 1)) * 0.45 : 1,
-        stroke: '#232B36', 'stroke-width': 0.05,
+        'fill-opacity': live ? 0.3 + (i / (COLUMN[color].length - 1)) * 0.5 : 1,
+        stroke: live ? EDGE[color] : '#232B36',
+        'stroke-opacity': live ? 0.4 : 1,
+        'stroke-width': 0.045,
       }, cells);
     });
   }
 
   // ── The centre ───────────────────────────────────────────────────
   svg('rect', {
-    x: 8.1, y: 8.1, width: 2.8, height: 2.8, rx: 0.5,
-    fill: '#0D1219', stroke: '#2A3441', 'stroke-width': 0.08,
+    x: 8.1, y: 8.1, width: 2.8, height: 2.8, rx: 0.55,
+    fill: 'url(#brd-centre)', stroke: '#2A3441', 'stroke-width': 0.07,
   }, cells);
   // One wedge per arm, each pointing in from the column that feeds it.
   const WEDGE = {
@@ -189,10 +246,14 @@ function buildBoard(roster = TWO) {
   };
   for (const [color, d] of Object.entries(WEDGE)) {
     svg('path', {
-      d, fill: PLAYED.has(color) ? TINT[color] : DIM,
-      'fill-opacity': PLAYED.has(color) ? 0.75 : 0.5,
+      d, fill: PLAYED.has(color) ? `url(#tile-${color})` : DIM,
+      'fill-opacity': PLAYED.has(color) ? 0.9 : 0.5,
+      stroke: 'rgba(0,0,0,.35)', 'stroke-width': 0.03,
     }, cells);
   }
+  // Where all four roads end: a little gold at the very middle.
+  svg('circle', { cx: 9.5, cy: 9.5, r: 0.17,
+    fill: 'url(#brd-jewel)', stroke: 'rgba(0,0,0,.4)', 'stroke-width': 0.03 }, cells);
 
   gMarks = svg('g', {}, gRoot);
   gPawns = svg('g', {}, gRoot);
@@ -204,12 +265,12 @@ function buildBoard(roster = TWO) {
       // An invisible disc wider than the pawn itself, so a thumb aimed
       // roughly at a piece still lands on it. It never changes size.
       svg('circle', { class: 'hit', r: 0.78, fill: 'transparent' }, g);
-      svg('circle', { r: 0.34, fill: 'rgba(0,0,0,.45)', cy: 0.07 }, g);
+      svg('circle', { r: 0.33, fill: 'rgba(0,0,0,.5)', cy: 0.09 }, g);
       svg('circle', {
-        r: 0.34, fill: TINT[color],
-        stroke: EDGE[color], 'stroke-width': 0.09,
+        r: 0.34, fill: `url(#pawn-${color})`,
+        stroke: EDGE[color], 'stroke-width': 0.06,
       }, g);
-      svg('circle', { r: 0.13, cx: -0.1, cy: -0.11, fill: '#fff', 'fill-opacity': 0.32 }, g);
+      svg('circle', { r: 0.12, cx: -0.1, cy: -0.12, fill: '#fff', 'fill-opacity': 0.4 }, g);
       pawnNodes[`${color}${i}`] = g;
       g.addEventListener('click', (e) => { e.stopPropagation(); tapPawn(color, i); });
     }
