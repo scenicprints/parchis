@@ -10,9 +10,9 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import {
-  NEST, HOME, COL_BASE, SIDES, ENTRY, SAFE, NAMES, other,
-  newGame, rollDice, applyRoll, applyAction, legalActions,
-  onRing, inCol, progress, BOARD_REV,
+  NEST, HOME, COL_BASE, SIDES, ORDER, TWO, FOUR, ENTRY, SAFE, NAMES, other,
+  newGame, rollDice, applyRoll, applyAction, legalActions, compelled, pathOf,
+  onRing, inCol, progress, BOARD_REV, sidesOf,
 } from './rules.js';
 
 import { RING, COLUMN, NEST_BOX, nestSlots, homeSlot, GRID } from './board.js';
@@ -30,17 +30,40 @@ let myColor = null;
 let sel = null;        // the pawn the player has tapped
 let lastRoll = 0;      // so the dice only tumble on a fresh roll
 let thinking = false;  // the computer is mid-turn; keep hands off the board
-let nudging = false;   // a forced move is being pushed along; do not stack them
+let walking = null;    // id of the pawn currently crossing the board
 
-// Playing the computer is a local-only affair: it takes blue, you take red.
-// Kept in this device's own storage, so it never travels to the other phone.
-const BOT_LEVELS = ['off', 'easy', 'hard'];
-const BOT_LABEL = { off: 'Off', easy: 'Easy', hard: 'Hard' };
-let bot = BOT_LEVELS.includes(localStorage.getItem('parchis-bot'))
-  ? localStorage.getItem('parchis-bot')
-  : 'off';
+const BOT_LEVELS = ['easy', 'hard'];
+const BOT_LABEL = { easy: 'Easy', hard: 'Hard' };
+let botSkill = BOT_LEVELS.includes(localStorage.getItem('parchis-skill'))
+  ? localStorage.getItem('parchis-skill')
+  : 'hard';
 
-const botPlays = (color) => LOCAL && bot !== 'off' && color === 'blue';
+// How many are playing, and how many of those are the computer. A game can
+// have four players but never four people: red and blue are the only seats a
+// person can take, so the computer fills from the far end of the table back.
+const BOT_PREFERENCE = ['yellow', 'green', 'blue'];
+
+function rosterFor(total) { return total === 4 ? FOUR : TWO; }
+
+function botsFor(total, count) {
+  const roster = rosterFor(total);
+  return BOT_PREFERENCE.filter((c) => roster.includes(c)).slice(0, count);
+}
+
+const isBot = (c) => (game?.bots || []).includes(c);
+
+// May this device act for that colour? Never for the computer, and online
+// never for anybody but yourself.
+const iPlay = (c) => !isBot(c) && (LOCAL || c === myColor);
+
+// Exactly one device drives the computer, or two phones write the same turn
+// and fight over it. The seat earliest in turn order does it.
+function iDriveBots() {
+  if (LOCAL) return true;
+  const seats = table?.seats || {};
+  const held = ORDER.filter((c) => seats[c]?.uid);
+  return held.length > 0 && seats[held[0]].uid === uid;
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -59,17 +82,27 @@ function svg(tag, attrs = {}, parent = null) {
   return node;
 }
 
-const TINT = { red: '#E4443A', blue: '#3D8BFD', green: '#2E3A47', yellow: '#2E3A47' };
-const PLAYED = new Set(SIDES);          // red and blue; the other two arms are scenery
+const TINT = { red: '#E4443A', blue: '#3D8BFD', green: '#3FAE63', yellow: '#E3B23C' };
+const EDGE = { red: '#8E241D', blue: '#1B4C96', green: '#1F6B39', yellow: '#8A6614' };
+const DIM  = '#2E3A47';                 // an arm nobody is playing
+
+// Who is in this game. Two-handed until a roster says otherwise.
+let PLAYED = new Set(TWO);
+let builtFor = '';                      // the roster the board was drawn for
 
 let gRoot, gMarks, gPawns;
-const pawnNodes = {};
+let pawnNodes = {};
 
-// The whole board is one square rounded-off drawing. It is built once and
-// then only the pawns move.
-function buildBoard() {
+// The whole board is one square rounded-off drawing. It is redrawn only when
+// the roster changes — going from two players to four lights up two more
+// corners — and after that only the pawns move.
+function buildBoard(roster = TWO) {
+  PLAYED = new Set(roster);
+  builtFor = [...roster].join(',');
+
   const board = $('board');
   board.innerHTML = '';
+  pawnNodes = {};
 
   gRoot = svg('g', {}, board);
 
@@ -147,15 +180,25 @@ function buildBoard() {
     x: 8.1, y: 8.1, width: 2.8, height: 2.8, rx: 0.5,
     fill: '#0D1219', stroke: '#2A3441', 'stroke-width': 0.08,
   }, cells);
-  // Blue comes down from the top, red comes up from the bottom.
-  svg('path', { d: 'M8.35 8.35 H10.65 L9.5 9.5 Z', fill: TINT.blue, 'fill-opacity': 0.75 }, cells);
-  svg('path', { d: 'M8.35 10.65 H10.65 L9.5 9.5 Z', fill: TINT.red, 'fill-opacity': 0.75 }, cells);
+  // One wedge per arm, each pointing in from the column that feeds it.
+  const WEDGE = {
+    yellow: 'M8.35 8.35 H10.65 L9.5 9.5 Z',      // down from the top arm
+    blue:   'M10.65 8.35 V10.65 L9.5 9.5 Z',     // in from the right arm
+    green:  'M8.35 10.65 H10.65 L9.5 9.5 Z',     // up from the bottom arm
+    red:    'M8.35 8.35 V10.65 L9.5 9.5 Z',      // in from the left arm
+  };
+  for (const [color, d] of Object.entries(WEDGE)) {
+    svg('path', {
+      d, fill: PLAYED.has(color) ? TINT[color] : DIM,
+      'fill-opacity': PLAYED.has(color) ? 0.75 : 0.5,
+    }, cells);
+  }
 
   gMarks = svg('g', {}, gRoot);
   gPawns = svg('g', {}, gRoot);
 
   // One circle per pawn, created once so CSS can animate it between squares.
-  for (const color of SIDES) {
+  for (const color of roster) {
     for (let i = 0; i < 4; i++) {
       const g = svg('g', { class: 'pawn', 'data-color': color, 'data-i': i }, gPawns);
       // An invisible disc wider than the pawn itself, so a thumb aimed
@@ -164,7 +207,7 @@ function buildBoard() {
       svg('circle', { r: 0.34, fill: 'rgba(0,0,0,.45)', cy: 0.07 }, g);
       svg('circle', {
         r: 0.34, fill: TINT[color],
-        stroke: color === 'red' ? '#8E241D' : '#1B4C96', 'stroke-width': 0.09,
+        stroke: EDGE[color], 'stroke-width': 0.09,
       }, g);
       svg('circle', { r: 0.13, cx: -0.1, cy: -0.11, fill: '#fff', 'fill-opacity': 0.32 }, g);
       pawnNodes[`${color}${i}`] = g;
@@ -187,7 +230,7 @@ function layout(state) {
   const groups = new Map();
   const out = {};
 
-  for (const color of SIDES) {
+  for (const color of sidesOf(state)) {
     state.pawns[color].forEach((pos, i) => {
       const id = `${color}${i}`;
       if (pos === NEST) {
@@ -230,9 +273,10 @@ function layout(state) {
 
 // Every action open to the player, and which pawns they belong to.
 function openActions() {
-  if (!game || !myColor) return [];
+  if (!game || (!LOCAL && !myColor)) return [];
   if (game.phase !== 'move' || game.winner) return [];
-  if (!LOCAL && game.turn !== myColor) return [];
+  if (thinking || walking) return [];
+  if (!iPlay(game.turn)) return [];
   return legalActions(game);
 }
 
@@ -271,8 +315,14 @@ function render() {
   // The board arrives over the wire before a seat has been picked, and
   // there is nothing to draw until we know which side we are.
   if (!game || (!LOCAL && !myColor)) return;
+
+  // Going from two players to four lights up two more corners, so the board
+  // has to be redrawn before anything is placed on it.
+  const roster = sidesOf(game);
+  if (roster.join(',') !== builtFor) buildBoard(roster);
+
   const color = seatColor();
-  const mine = LOCAL || game.turn === myColor;
+  const mine = iPlay(game.turn);
   const acts = openActions();
 
   // ── Which pawns can do anything ──────────────────────────────────
@@ -282,14 +332,6 @@ function render() {
       game.pawns[color].forEach((p, i) => { if (p === NEST) movable.add(i); });
     } else movable.add(a.pawn);
   }
-
-  // If there is only one pawn worth tapping, tap it for them.
-  const distinct = new Set(acts.map((a) => (a.type === 'exit' ? 'exit' : a.pawn)));
-  if (sel === null && distinct.size === 1 && acts.length) {
-    sel = acts[0].type === 'exit'
-      ? game.pawns[color].findIndex((p) => p === NEST)
-      : acts[0].pawn;
-  }
   if (sel !== null && !movable.has(sel)) sel = null;
 
   // ── Pawns ────────────────────────────────────────────────────────
@@ -298,7 +340,10 @@ function render() {
   const spots = layout(game);
   for (const [id, node] of Object.entries(pawnNodes)) {
     const s = spots[id];
-    node.setAttribute('transform', `translate(${s.x.toFixed(3)} ${s.y.toFixed(3)})`);
+    // A pawn mid-stride owns its own position until it arrives.
+    if (id !== walking) {
+      node.setAttribute('transform', `translate(${s.x.toFixed(3)} ${s.y.toFixed(3)})`);
+    }
     for (const c of node.querySelectorAll('circle')) {
       if (c.classList.contains('hit')) continue;      // the tap disc stays put
       if (!c.hasAttribute('data-base')) c.setAttribute('data-base', c.getAttribute('r'));
@@ -327,7 +372,11 @@ function render() {
       const cy = cell.y + 0.5;
 
       const g = svg('g', { class: `marker${a.capture ? ' eat' : ''}` }, gMarks);
-      svg('circle', { cx, cy, r: 0.42 }, g);
+      // The board is the interface again, so a destination has to be worth
+      // aiming at. The disc you see is 0.46; the one you hit is 0.82, which
+      // is a little over 30px on a phone rather than the 8px it once was.
+      svg('circle', { class: 'hit', cx, cy, r: 0.82, fill: 'transparent' }, g);
+      svg('circle', { cx, cy, r: 0.46 }, g);
       const t = svg('text', { x: cx, y: cy }, g);
       t.textContent = steps;
       if (viewColor() === 'blue') t.setAttribute('transform', `rotate(180 ${cx} ${cy})`);
@@ -337,68 +386,38 @@ function render() {
   }
 
   renderHeader();
-  renderMoves(mine);
   renderPanel(mine);
 }
 
-// What a move is called, in words rather than co-ordinates.
-function moveLabel(a) {
-  const steps = a.use.reduce((n, i) => n + game.pending[i].v, 0);
-  let what;
-  if (a.type === 'exit') what = 'Bring a pawn out';
-  else if (a.to === HOME) what = `Pawn ${a.pawn + 1} all the way in`;
-  else if (inCol(a.to)) what = `Pawn ${a.pawn + 1} up your own column`;
-  else what = `Pawn ${a.pawn + 1} forward ${steps}`;
-  if (a.capture) what += `, sending ${NAMES[a.capture.color]} home`;
-  return what;
-}
-
-// Every real choice, as a button the width of the screen. A forced move is
-// never listed — by the time this runs, autoPlay has already made it.
-function renderMoves(mine) {
-  const box = $('moves');
-  box.innerHTML = '';
-  if (thinking || !mine || game.winner || game.phase !== 'move') return;
-
-  const acts = distinctActions(legalActions(game));
-  if (acts.length < 2) {
-    // A forced move is normally gone before this ever draws — autoPlay takes
-    // it the moment the dice land. But if that chain is ever interrupted, the
-    // player would be left with a dead Roll button and nothing to press. Give
-    // it a push instead of showing them a dead end.
-    if (acts.length === 1 && !nudging) {
-      nudging = true;
-      setTimeout(() => { nudging = false; autoPlay(); }, 0);
-    }
-    return;
-  }
-
-  for (const a of acts) {
-    const b = document.createElement('button');
-    b.className = `move${a.capture ? ' eat' : ''}${a.home ? ' in' : ''}`;
-    b.innerHTML = '<span class="what"></span><span class="tag"></span>';
-    b.children[0].textContent = moveLabel(a);
-    b.children[1].textContent = a.capture ? '+20' : a.home ? '+10' : '';
-    b.addEventListener('click', () => play(a));
-    box.appendChild(b);
-  }
-}
-
+// One chip per colour in the game, in turn order, with whoever is to move
+// lit up. Four names will not fit beside a score, so the score steps aside
+// once the table is more than two-handed.
 function renderHeader() {
-  const color = seatColor();
+  const roster = sidesOf(game);
   const seats = table?.seats || {};
-  const foe = other(color);
+  const bar = $('seatbar');
+  bar.innerHTML = '';
 
-  $('chip-mine').className = `chip ${color}`;
-  $('chip-theirs').className = `chip ${foe}`;
-  $('name-mine').textContent = LOCAL ? NAMES[color] : (seats[color]?.name || NAMES[color]);
-  $('name-theirs').textContent = seats[foe]?.name || 'Open';
+  for (const c of roster) {
+    const who = isBot(c) ? 'Computer' : (seats[c]?.name || (LOCAL ? NAMES[c] : 'Open'));
+    const el = document.createElement('div');
+    el.className = `seat${game.turn === c && !game.winner ? ' active' : ''}`;
+    el.innerHTML = '<i class="chip"></i><span class="nm"></span>';
+    el.firstChild.className = `chip ${c}`;
+    el.lastChild.textContent = who;
+    bar.appendChild(el);
+  }
+  bar.classList.toggle('four', roster.length > 2);
 
-  $('seat-mine').classList.toggle('active', game.turn === color && !game.winner);
-  $('seat-theirs').classList.toggle('active', game.turn === foe && !game.winner);
-
-  const sc = table?.score || { red: 0, blue: 0 };
-  $('score').textContent = `${sc[color] || 0} – ${sc[foe] || 0}`;
+  const score = $('score');
+  if (roster.length > 2) {
+    score.classList.add('hidden');
+  } else {
+    score.classList.remove('hidden');
+    const me = seatColor();
+    const sc = table?.score || {};
+    score.textContent = `${sc[me] || 0} – ${sc[other(me)] || 0}`;
+  }
 }
 
 function renderPanel(mine) {
@@ -429,37 +448,37 @@ function renderPanel(mine) {
   }
 
   // ── What to say ──────────────────────────────────────────────────
-  const foeName = seats[other(color)]?.name || NAMES[other(color)];
+  const turnName = isBot(game.turn)
+    ? `${NAMES[game.turn]} (computer)`
+    : (seats[game.turn]?.name || NAMES[game.turn]);
+  const soloHuman = sidesOf(game).filter((c) => !isBot(c)).length === 1;
   status.className = 'status';
+  rollBtn.textContent = 'Roll';
 
   if (game.winner) {
     status.classList.add('over');
-    status.textContent = LOCAL
-      ? `${NAMES[game.winner]} wins`
-      : game.winner === color ? 'You win' : `${foeName} wins`;
+    status.textContent = !LOCAL && game.winner === myColor
+      ? 'You win'
+      : `${NAMES[game.winner]} wins`;
     rollBtn.textContent = 'New game';
     rollBtn.disabled = false;
-  } else if (thinking) {
-    status.textContent = `${NAMES[other('red')]} is thinking`;
-    rollBtn.textContent = 'Roll';
+  } else if (thinking || walking) {
+    status.textContent = `${turnName} is playing`;
     rollBtn.disabled = true;
-  } else if (!LOCAL && !seats[other(color)]) {
+  } else if (!LOCAL && !seats[other(myColor)] && sidesOf(game).length === 2
+             && !isBot(other(myColor))) {
     status.textContent = 'Waiting for the other side to be taken';
-    rollBtn.textContent = 'Roll';
     rollBtn.disabled = true;
   } else if (!mine) {
-    status.textContent = `${foeName} is playing`;
-    rollBtn.textContent = 'Roll';
+    status.textContent = `${turnName} is playing`;
     rollBtn.disabled = true;
   } else if (game.phase === 'roll') {
     status.classList.add('you');
-    status.textContent = LOCAL && bot === 'off' ? `${NAMES[color]} to roll` : 'Your turn';
-    rollBtn.textContent = 'Roll';
+    status.textContent = LOCAL && !soloHuman ? `${NAMES[color]} to roll` : 'Your turn';
     rollBtn.disabled = false;
   } else {
     status.classList.add('you');
-    status.textContent = 'Choose your move';
-    rollBtn.textContent = 'Roll';
+    status.textContent = sel === null ? 'Press a pawn' : 'Press where it goes';
     rollBtn.disabled = true;
   }
 
@@ -491,22 +510,72 @@ function dieFace(v, spent, fresh) {
 // ═══════════════════════════════════════════════════════════════════════
 
 function tapPawn(color, i) {
-  if (color !== seatColor()) return;
-  const acts = actionsFor(i);
+  if (walking || thinking) return;
+  if (color !== seatColor() || !iPlay(game.turn)) return;
+
+  const acts = distinctActions(actionsFor(i));
   if (!acts.length) { sel = null; render(); return; }
+
+  // With one place to go, pressing the pawn is the whole move. Only when a
+  // pawn has a real choice of squares is a second tap worth asking for.
+  if (acts.length === 1) { play(acts[0]); return; }
+
   sel = sel === i ? null : i;
   render();
 }
 
+// A move the player chose: walk it, then see what the turn does next.
 async function play(action) {
-  sel = null;
-  await commit(applyAction(game, action));
+  await applyMove(action);
   await settleTurn();
+}
+
+// The move itself, with no opinion about what happens afterwards. autoPlay
+// and the computer both come through here, so neither re-enters settleTurn
+// and sends the three of them round in a circle.
+async function applyMove(action) {
+  if (walking) return;
+  sel = null;
+  const color = game.turn;
+  const id = `${color}${action.pawn}`;
+  const from = game.pawns[color][action.pawn];
+  const steps = action.use.reduce((n, i) => n + game.pending[i].v, 0);
+  const path = action.type === 'exit' ? [action.to] : pathOf(color, from, steps);
+
+  gMarks.innerHTML = '';                       // the markers have served
+  await walkPawn(id, color, path);
+  await commit(applyAction(game, action));
+}
+
+// Walk a pawn across the board a square at a time. The state has not changed
+// yet, so render() would put the pawn straight back where it started — which
+// is what `walking` holds off until it arrives.
+async function walkPawn(id, color, path) {
+  const node = pawnNodes[id];
+  if (!node || !path.length) return;
+
+  walking = id;
+  node.classList.add('walking');
+  node.parentNode.appendChild(node);            // step over anything in the way
+
+  // Long bonus moves would crawl at a fixed pace, so the stride shortens as
+  // the journey lengthens and the whole thing stays under about a second.
+  const ms = Math.max(38, Math.min(105, Math.round(900 / path.length)));
+  for (const pos of path) {
+    const cell = pos === HOME ? { x: 9, y: 9 } : cellOf(color, pos);
+    node.setAttribute('transform',
+      `translate(${(cell.x + 0.5).toFixed(3)} ${(cell.y + 0.5).toFixed(3)})`);
+    await sleep(ms);
+  }
+
+  node.classList.remove('walking');
+  walking = null;
 }
 
 async function doRoll() {
   if (game.winner) return startGame();
-  if (thinking) return;
+  if (thinking || walking) return;
+  if (!iPlay(game.turn)) return;
   sel = null;
   await commit(applyRoll(game, rollDice()));
   await settleTurn();
@@ -519,39 +588,41 @@ async function settleTurn() {
   await botTurn();
 }
 
-// A move with only one answer is not a question. When the dice leave exactly
-// one thing to do, do it — rather than disabling the dice and waiting for the
-// player to find the one square that lets the game continue.
+// Only the moves the rules take out of your hands get played for you: a 5
+// that has to bring a pawn out, and a 6 that has to break your own wall.
+// Everything else is yours, however obvious it looks from here.
 async function autoPlay() {
   let guard = 0;
   while (guard++ < 60) {
-    if (!game || game.winner || game.phase !== 'move') return;
-    if (!LOCAL && game.turn !== myColor) return;
-    const acts = distinctActions(legalActions(game));
-    if (acts.length !== 1) return;
-    sel = null;
-    await commit(applyAction(game, acts[0]));
+    if (!game || game.winner || game.phase !== 'move' || walking) return;
+    if (!iPlay(game.turn)) return;
+    const forced = distinctActions(compelled(game));
+    if (forced.length !== 1) return;      // nothing forced, or you pick which
+    await applyMove(forced[0]);
   }
 }
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-// The computer's turn, played out slowly enough to watch.
+// The computer's turn, or several of them in a row when more than one seat
+// is being played for. Slow enough to follow, and its pawns walk like yours.
 async function botTurn() {
-  if (thinking || !game || game.winner || !botPlays(game.turn)) return;
+  if (thinking || !game || game.winner) return;
+  if (!isBot(game.turn) || !iDriveBots()) return;
+
   thinking = true;
   render();
   try {
     let guard = 0;
-    while (!game.winner && botPlays(game.turn) && guard++ < 300) {
-      await sleep(560);
+    while (!game.winner && isBot(game.turn) && guard++ < 400) {
+      await sleep(420);
       if (game.phase === 'roll') { await commit(applyRoll(game, rollDice())); continue; }
       const acts = distinctActions(legalActions(game));
       if (!acts.length) break;
-      const pick = bot === 'hard'
+      const pick = botSkill === 'hard'
         ? bestAction(acts)
         : acts[Math.floor(Math.random() * acts.length)];
-      await commit(applyAction(game, pick));
+      await applyMove(pick);
     }
   } finally {
     thinking = false;
@@ -620,23 +691,18 @@ function openMenu() {
 
     add(inner, 'How it plays', '', () => { close(); openRules(); });
 
-    // Playing the computer means playing on this device alone, so away from
-    // the shared board rather than on top of it.
-    if (LOCAL) {
-      add(inner, 'Play the computer', BOT_LABEL[bot], () => {
-        bot = BOT_LEVELS[(BOT_LEVELS.indexOf(bot) + 1) % BOT_LEVELS.length];
-        localStorage.setItem('parchis-bot', bot);
-        close();
-        render();
-        botTurn();
-      });
-      add(inner, 'Back to the real game', '', () => { location.href = location.pathname; });
-    } else {
-      add(inner, 'Play the computer', '', () => {
-        if (bot === 'off') { bot = 'hard'; localStorage.setItem('parchis-bot', 'hard'); }
-        location.href = `${location.pathname}?local=1`;
-      });
-    }
+    const n = botCount();
+    add(inner, 'Players', `${players()} · ${n} computer${n === 1 ? '' : 's'}`,
+      () => { close(); openPlayers(); });
+
+    add(inner, 'Computer skill', BOT_LABEL[botSkill], () => {
+      botSkill = BOT_LEVELS[(BOT_LEVELS.indexOf(botSkill) + 1) % BOT_LEVELS.length];
+      localStorage.setItem('parchis-skill', botSkill);
+      close();
+    });
+
+    if (LOCAL) add(inner, 'Back to the real game', '', () => { location.href = location.pathname; });
+    else add(inner, 'Play on this device', '', () => { location.href = `${location.pathname}?local=1`; });
 
     add(inner, 'New game', '', async () => {
       close();
@@ -668,6 +734,35 @@ function add(parent, label, val, fn, danger) {
   b.addEventListener('click', fn);
   parent.appendChild(b);
   return b;
+}
+
+// How many are at the table, and how many of those are the computer. Red and
+// blue are the only seats a person can take, so four players always means at
+// least two of them are played for.
+function openPlayers() {
+  sheet((inner, close) => {
+    const apply = async (total, bots) => {
+      localStorage.setItem('parchis-players', String(total));
+      localStorage.setItem('parchis-bots', String(bots));
+      close();
+      if (game && !game.winner && !confirm('Start a new game with these players?')) return;
+      await startGame();
+    };
+
+    inner.insertAdjacentHTML('beforeend',
+      '<div class="row"><span>Two play red and blue. Green and yellow are always the computer.</span></div>');
+
+    for (const total of [2, 4]) {
+      const most = LOCAL ? total - 1 : total - 2;
+      for (let b = 0; b <= Math.max(0, most); b++) {
+        const people = total - b;
+        const label = `${total} players — ${people} human${people === 1 ? '' : 's'}, ` +
+                      `${b} computer${b === 1 ? '' : 's'}`;
+        const now = players() === total && botCount() === b;
+        add(inner, label, now ? 'Playing' : '', () => apply(total, b));
+      }
+    }
+  });
 }
 
 function openRules() {
@@ -709,10 +804,26 @@ function openRules() {
 let db, TABLE, GAME, save, claimSeat, releaseSeat, recordWin;
 let gameLoaded = false;
 
+// The table settings live on this device until a new game bakes them into
+// the game itself, which is how the other phone finds out about them.
+const players = () => (Number(localStorage.getItem('parchis-players')) === 4 ? 4 : 2);
+const botCount = () => {
+  const n = Number(localStorage.getItem('parchis-bots'));
+  const max = players() - 1;
+  return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : (LOCAL ? 1 : 0);
+};
+
 // The loser opens the next one. The very first game goes to red.
 async function startGame() {
-  const first = game?.winner ? other(game.winner) : 'red';
-  const fresh = newGame(first);
+  const total = players();
+  const first = game?.winner && sidesOf(game).includes(game.winner)
+    ? game.winner            // beaten players do not get to open the next one
+    : 'red';
+  const fresh = newGame({
+    first: total === 2 && game?.winner ? other(game.winner) : first,
+    sides: rosterFor(total),
+    bots: botsFor(total, botCount()),
+  });
   fresh.id = `${Date.now()}`;
   sel = null;
   if (LOCAL) { game = fresh; render(); await botTurn(); return; }
@@ -804,9 +915,10 @@ async function connect() {
 
     booted();
     render();
-    // A forced move should not wait on a tap here either. Only the player
-    // whose turn it is gets past the guard inside, so both phones stay put.
-    autoPlay();
+    // A compelled move should not wait on a tap here either, and the seat
+    // driving the computer picks up its turn from the same signal. Both are
+    // guarded inside, so the other phone stays put.
+    settleTurn();
     if (game.winner && game.id) recordWin(game.id, game.winner).catch(() => {});
   }, fatal);
 }
@@ -880,16 +992,20 @@ function wire() {
 }
 
 async function main() {
-  buildBoard();
+  buildBoard(rosterFor(players()));
   wire();
 
   if (LOCAL) {
     myColor = 'red';
-    table = { seats: { red: { name: 'Red' }, blue: { name: 'Blue' } }, score: { red: 0, blue: 0 } };
-    game = newGame('red');
+    table = { seats: {}, score: {} };
+    game = newGame({
+      sides: rosterFor(players()),
+      bots: botsFor(players(), botCount()),
+    });
     game.id = 'local';
     booted();
     render();
+    await botTurn();
     return;
   }
 
