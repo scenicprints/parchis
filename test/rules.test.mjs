@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  RING_LEN, COL_LEN, NEST, COL_BASE, HOME,
+  RING_LEN, COL_LEN, LAP_LEN, ROUTE_LEN, NEST, COL_BASE, HOME,
   ENTRY, TURN_IN, SAFE, newGame, walk, progress,
   legalActions, applyAction, applyRoll, isBarrier, mostAdvanced,
 } from '../docs/rules.js';
@@ -42,21 +42,23 @@ test('entries sit 17 apart and there are twelve safe squares', () => {
   for (const e of entries) assert.ok(SAFE.has(e), `entry ${e} must be safe`);
 });
 
-test('every turn-in is an arm tip, one step short of a full lap', () => {
+test('every turn-in is an arm tip, a full crossing from its own entry', () => {
   for (const color of Object.keys(ENTRY)) {
-    assert.ok(TIPS.includes(TURN_IN[color]));
-    assert.equal((ENTRY[color] + 67) % RING_LEN, TURN_IN[color]);
+    assert.ok(TIPS.includes(TURN_IN[color]), `${color} turns in at a tip`);
+    assert.equal((ENTRY[color] + LAP_LEN) % RING_LEN, TURN_IN[color]);
   }
 });
 
 // ═══════════════════════════════════════════════════════════════════
-test('a lap is 68 squares, then 7 column squares, then the centre', () => {
+// The entry sits against the colour's own corner and the ramp is the tip of
+// its own arm, so the crossing is 63 squares rather than a full 68.
+test('a crossing is 63 squares, then 7 column squares, then the centre', () => {
   const e = ENTRY.red;
-  assert.equal(walk('red', e, 67).to, TURN_IN.red);
-  assert.equal(walk('red', e, 68).to, COL_BASE);            // first column square
-  assert.equal(walk('red', e, 74).to, COL_BASE + 6);        // last column square
-  assert.equal(walk('red', e, 75).to, HOME);                // the centre, exactly
-  assert.equal(walk('red', e, 76), null);                   // one too many
+  assert.equal(walk('red', e, LAP_LEN).to, TURN_IN.red);           // 63, the ramp
+  assert.equal(walk('red', e, LAP_LEN + 1).to, COL_BASE);          // first column square
+  assert.equal(walk('red', e, LAP_LEN + COL_LEN).to, COL_BASE + 6); // last column square
+  assert.equal(walk('red', e, LAP_LEN + COL_LEN + 1).to, HOME);    // the centre, exactly
+  assert.equal(walk('red', e, LAP_LEN + COL_LEN + 2), null);       // one too many
 });
 
 test('you need the exact count to get in', () => {
@@ -67,12 +69,13 @@ test('you need the exact count to get in', () => {
   assert.equal(walk('red', NEST, 1), null);
 });
 
-test('progress runs 0 in the nest to 76 in the centre', () => {
+test('progress runs 0 in the nest to 72 in the centre', () => {
+  assert.equal(ROUTE_LEN, 72);
   assert.equal(progress('red', NEST), 0);
   assert.equal(progress('red', ENTRY.red), 1);
-  assert.equal(progress('red', TURN_IN.red), 68);
-  assert.equal(progress('red', COL_BASE), 69);
-  assert.equal(progress('red', HOME), 76);
+  assert.equal(progress('red', TURN_IN.red), LAP_LEN + 1);       // 64
+  assert.equal(progress('red', COL_BASE), LAP_LEN + 2);          // 65
+  assert.equal(progress('red', HOME), ROUTE_LEN);                // 72
 });
 
 // ═══════════════════════════════════════════════════════════════════

@@ -193,6 +193,13 @@ body {
   to   { opacity: 1; transform: scale(1); }
 }
 .marker circle { fill: rgba(242,193,78,.22); stroke: var(--pop); stroke-width: .08; }
+
+/* The oversized tap targets are there to be hit, never to be seen. A fill is
+   still needed to catch the tap, so it has to be transparent rather than
+   none, and the rule has to be here: a CSS fill beats the attribute on the
+   element, which is what was quietly drawing every target as a second ring. */
+.marker circle.hit,
+.pawn circle.hit { fill: transparent; stroke: none; }
 .marker text {
   fill: var(--pop);
   font: 800 .46px/1 ui-rounded, system-ui, sans-serif;

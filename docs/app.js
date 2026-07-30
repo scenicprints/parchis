@@ -255,8 +255,12 @@ function buildBoard(roster = TWO) {
   svg('circle', { cx: 9.5, cy: 9.5, r: 0.17,
     fill: 'url(#brd-jewel)', stroke: 'rgba(0,0,0,.4)', 'stroke-width': 0.03 }, cells);
 
-  gMarks = svg('g', {}, gRoot);
+  // Pawns first, then markers, so a destination always sits above whatever
+  // is standing on it. Landing on an occupied square is how you build a wall
+  // with your own pawn and how you take someone else's, and neither is
+  // reachable if the piece underneath swallows the tap.
   gPawns = svg('g', {}, gRoot);
+  gMarks = svg('g', {}, gRoot);
 
   // One circle per pawn, created once so CSS can animate it between squares.
   for (const color of roster) {
@@ -434,9 +438,11 @@ function render() {
 
       const g = svg('g', { class: `marker${a.capture ? ' eat' : ''}` }, gMarks);
       // The board is the interface again, so a destination has to be worth
-      // aiming at. The disc you see is 0.46; the one you hit is 0.82, which
-      // is a little over 30px on a phone rather than the 8px it once was.
-      svg('circle', { class: 'hit', cx, cy, r: 0.82, fill: 'transparent' }, g);
+      // aiming at: the disc you see is 0.46, the one you hit is 0.62.
+      // It stops well short of the next square on purpose. Markers sit above
+      // the pawns now, and a disc any wider would start eating taps meant
+      // for the piece standing beside it.
+      svg('circle', { class: 'hit', cx, cy, r: 0.62, fill: 'transparent' }, g);
       svg('circle', { cx, cy, r: 0.46 }, g);
       const t = svg('text', { x: cx, y: cy }, g);
       t.textContent = steps;
