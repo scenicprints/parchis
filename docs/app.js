@@ -685,9 +685,11 @@ function sheet(build) {
 function openMenu() {
   sheet((inner, close) => {
     const sc = table?.score || { red: 0, blue: 0 };
-    inner.insertAdjacentHTML('beforeend', `
-      <div class="row"><span>Games won</span>
-        <span class="val">Red ${sc.red || 0} · Blue ${sc.blue || 0}</span></div>`);
+    if (sidesOf(game || {}).length === 2) {
+      inner.insertAdjacentHTML('beforeend', `
+        <div class="row"><span>Games won</span>
+          <span class="val">Red ${sc.red || 0} · Blue ${sc.blue || 0}</span></div>`);
+    }
 
     add(inner, 'How it plays', '', () => { close(); openRules(); });
 
@@ -753,8 +755,7 @@ function openPlayers() {
       '<div class="row"><span>Two play red and blue. Green and yellow are always the computer.</span></div>');
 
     for (const total of [2, 4]) {
-      const most = LOCAL ? total - 1 : total - 2;
-      for (let b = 0; b <= Math.max(0, most); b++) {
+      for (let b = leastBots(total); b <= total - 1; b++) {
         const people = total - b;
         const label = `${total} players — ${people} human${people === 1 ? '' : 's'}, ` +
                       `${b} computer${b === 1 ? '' : 's'}`;
@@ -807,10 +808,17 @@ let gameLoaded = false;
 // The table settings live on this device until a new game bakes them into
 // the game itself, which is how the other phone finds out about them.
 const players = () => (Number(localStorage.getItem('parchis-players')) === 4 ? 4 : 2);
+
+// Red and blue are the only seats a person can take, so a four-handed game
+// is always at least two computers. A two-handed one may be none.
+const leastBots = (total) => (total === 4 ? 2 : 0);
+
 const botCount = () => {
+  const total = players();
   const n = Number(localStorage.getItem('parchis-bots'));
-  const max = players() - 1;
-  return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : (LOCAL ? 1 : 0);
+  const floor = leastBots(total);
+  if (!Number.isFinite(n)) return Math.max(floor, LOCAL ? 1 : 0);
+  return Math.max(floor, Math.min(total - 1, n));
 };
 
 // The loser opens the next one. The very first game goes to red.
