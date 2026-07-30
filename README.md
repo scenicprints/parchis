@@ -58,44 +58,35 @@ picture at the top of this file.
 
 ---
 
-## Putting it live
+## It is live
 
-### 1. Let Firestore through
+**<https://scenicprints.github.io/parchis/>**
 
-This reuses the **foos-6ecf3** Firebase project, so there is no new project to
-set up. It only needs permission for its own two documents.
+Already done, on 2026-07-29:
 
-Firebase console → **Firestore Database** → **Rules**, add the `parchis` block
-from [`firestore.rules`](firestore.rules) to what is already there, then
-**Publish**. Until this is done the app opens on a screen telling you so.
+- Firestore rules published to **foos-6ecf3**, adding `/parchis/{doc}`
+  alongside the league's own rule. See [`firestore.rules`](firestore.rules).
+  Previous versions are kept in the console, so a rollback is one click.
+- Repo pushed to `scenicprints/parchis`, Pages serving **main /docs**.
+- Verified live: anonymous sign-in works, Firestore reads succeed, the
+  manifest and all three icons serve, and the service worker registers.
 
-### 2. Push it to GitHub Pages
+### Put it on the two phones
 
-```bash
-git remote add origin https://github.com/scenicprints/parchis.git
-```
-
-```bash
-git push -u origin main
-```
-
-Then in the repo: **Settings → Pages → Source: main, folder /docs**.
-
-It lands at `https://scenicprints.github.io/parchis/`.
-
-### 3. Put it on the two phones
-
-- **iPhone:** open the link in Safari, Share, **Add to Home Screen**. It has to
-  be Safari; Chrome on iOS cannot install a web app.
+- **iPhone:** open the link in **Safari**, Share, **Add to Home Screen**. It
+  has to be Safari. Chrome on iOS cannot install a web app.
 - **Android:** open in Chrome, menu, **Install app**.
 
 First open on each phone asks for a name and a side. Whoever goes second gets
-the side that is left.
+the side that is left. Both seats are still open.
 
-### 4. Bump `?v=` when you deploy
+### Deploying a change
 
-`index.html` links `styles.css?v=1` and `app.js?v=1`. Raise the number on both
-when you change either, so no phone keeps running yesterday's copy.
+Push to `main` and Pages rebuilds within a minute or so.
+
+**Bump `?v=` when you do.** `index.html` links `styles.css?v=1` and
+`app.js?v=1`. Raise the number on both when you change either, so no phone
+keeps running yesterday's copy.
 
 ---
 
