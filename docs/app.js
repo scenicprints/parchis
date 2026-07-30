@@ -126,7 +126,9 @@ function buildBoard(roster = TWO) {
   lin('brd-frame', [['0', '#E7C371'], ['0.45', '#A87B33'], ['1', '#6E4D1B']]);
   rad('brd-surface', [['0', '#182028'], ['1', '#0F141B']],
       { cx: 0.5, cy: 0.42, r: 0.75 });
-  lin('brd-cell', [['0', '#252E3A'], ['1', '#1A212A']]);
+  // The track has to sit clearly above the table it is printed on, or the
+  // loop never reads as a road and the eye has nothing to follow.
+  lin('brd-cell', [['0', '#3D4A5D'], ['1', '#2B3648']]);
   rad('brd-centre', [['0', '#1B2432'], ['1', '#0C1017']]);
   rad('brd-jewel', [['0', '#FFEDB0'], ['1', '#C79A34']], { cx: 0.4, cy: 0.35, r: 0.8 });
   rad('brd-well', [['0', '#0E1520'], ['1', '#070A0F']]);
@@ -200,18 +202,21 @@ function buildBoard(roster = TWO) {
       'stroke-width': 0.045,
     }, cells);
 
-    // Safe squares carry a ring you can pick out at arm's length, the way
-    // they are marked on a printed board — with a soft halo behind it.
+    // Safe squares are marked the way a printed board marks them: a quiet
+    // star stamped on the tile. Not a gold ring — rings are how the game
+    // says "you can move here", and a dozen decoys taught the eye to
+    // ignore the two that mattered.
     if (safe) {
-      svg('circle', {
-        cx: c.x + 0.5, cy: c.y + 0.5, r: 0.3,
-        fill: 'none', stroke: '#E8C05A',
-        'stroke-opacity': 0.18, 'stroke-width': 0.22,
-      }, cells);
-      svg('circle', {
-        cx: c.x + 0.5, cy: c.y + 0.5, r: 0.3,
-        fill: 'none', stroke: '#E8C05A',
-        'stroke-opacity': live ? 0.95 : 0.8, 'stroke-width': 0.1,
+      const pts = [];
+      for (let k = 0; k < 10; k++) {
+        const r = k % 2 ? 0.115 : 0.26;
+        const a = (Math.PI / 5) * k - Math.PI / 2;
+        pts.push(`${(c.x + 0.5 + Math.cos(a) * r).toFixed(3)},${(c.y + 0.5 + Math.sin(a) * r).toFixed(3)}`);
+      }
+      svg('polygon', {
+        points: pts.join(' '),
+        fill: live ? 'rgba(255,255,255,.5)' : 'rgba(232,192,90,.4)',
+        stroke: 'rgba(0,0,0,.3)', 'stroke-width': 0.03,
       }, cells);
     }
   });
@@ -223,10 +228,12 @@ function buildBoard(roster = TWO) {
       svg('rect', {
         x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.24,
         fill: live ? `url(#tile-${color})` : '#161C25',
-        // The ramp brightens as it approaches the middle.
-        'fill-opacity': live ? 0.3 + (i / (COLUMN[color].length - 1)) * 0.5 : 1,
+        // The ramp still brightens toward the middle, but quietly. At full
+        // paint the two columns were the loudest thing on the board, and
+        // they are the squares a pawn spends the least time on.
+        'fill-opacity': live ? 0.14 + (i / (COLUMN[color].length - 1)) * 0.3 : 1,
         stroke: live ? EDGE[color] : '#232B36',
-        'stroke-opacity': live ? 0.4 : 1,
+        'stroke-opacity': live ? 0.35 : 1,
         'stroke-width': 0.045,
       }, cells);
     });
@@ -269,6 +276,9 @@ function buildBoard(roster = TWO) {
       // An invisible disc wider than the pawn itself, so a thumb aimed
       // roughly at a piece still lands on it. It never changes size.
       svg('circle', { class: 'hit', r: 0.78, fill: 'transparent' }, g);
+      // The halo only shows on a pawn that can move right now. It is the one
+      // signal on the board that means "press this".
+      svg('circle', { class: 'halo', r: 0.5, fill: 'none' }, g);
       svg('circle', { r: 0.33, fill: 'rgba(0,0,0,.5)', cy: 0.09 }, g);
       svg('circle', {
         r: 0.34, fill: `url(#pawn-${color})`,

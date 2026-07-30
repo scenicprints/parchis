@@ -175,11 +175,21 @@ body {
 .pawn.mine.live { cursor: pointer; }
 
 .pawn.pick   { filter: drop-shadow(0 0 7px rgba(242,193,78,1)); }
-.pawn.live   { animation: breathe 1.9s ease-in-out infinite; }
 
-@keyframes breathe {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: .74; }
+/* A pawn that can move wears a pulsing gold halo. The old signal was the
+   whole piece fading in and out, which reads as "loading", not "press me",
+   and is invisible at arm's length. */
+.pawn .halo { display: none; }
+.pawn.live .halo {
+  display: block;
+  stroke: #F2C14E;
+  stroke-width: .09;
+  animation: beckon 1.4s ease-in-out infinite;
+}
+
+@keyframes beckon {
+  0%, 100% { stroke-opacity: 1;  }
+  50%      { stroke-opacity: .3; }
 }
 
 .marker {
@@ -192,7 +202,9 @@ body {
   from { opacity: 0; transform: scale(.5); }
   to   { opacity: 1; transform: scale(1); }
 }
-.marker circle { fill: rgba(242,193,78,.22); stroke: var(--pop); stroke-width: .08; }
+/* Destinations are the only gold discs on the board now — the safe-square
+   rings that used to compete with them are stamped stars instead. */
+.marker circle { fill: rgba(242,193,78,.3); stroke: var(--pop); stroke-width: .09; }
 
 /* The oversized tap targets are there to be hit, never to be seen. A fill is
    still needed to catch the tap, so it has to be transparent rather than
