@@ -49,9 +49,32 @@ for (const e of Object.values(ENTRY)) {
   SAFE.add((e + 12) % RING_LEN);
 }
 
-// The two seats actually used. Red starts bottom-left, blue top-right, so
-// they sit diagonally opposite each other.
-export const SIDES = ['red', 'blue'];
+// Turn order, which is simply the order the entries come round the ring.
+// A two-handed game uses red and blue, who sit diagonally opposite; a
+// four-handed game adds green and yellow between them.
+export const ORDER = ['red', 'green', 'blue', 'yellow'];
+export const TWO    = ['red', 'blue'];
+export const FOUR   = ORDER;
+
+// The seats claimable by a person. The other two are only ever computers,
+// which is why a game can have four players but never four humans.
+export const SIDES = TWO;
+
+// Who plays after this colour, among the colours actually in the game.
+export function nextSide(state, color = state.turn) {
+  const roster = sidesOf(state);
+  const seat = ORDER.indexOf(color);
+  for (let step = 1; step <= ORDER.length; step++) {
+    const cand = ORDER[(seat + step) % ORDER.length];
+    if (roster.includes(cand)) return cand;
+  }
+  return color;
+}
+
+// Older saved games predate the roster, and every one of those was red v blue.
+export const sidesOf = (state) => state.sides || TWO;
+
+// Kept for the two-handed case, where "the other one" still means something.
 export const other = (c) => (c === 'red' ? 'blue' : 'red');
 
 export const PAWNS_PER_SIDE = 4;
@@ -76,7 +99,7 @@ export function progress(color, pos) {
 // Everything standing on a given ring square, as {color, index} pairs.
 export function occupants(state, ringIndex) {
   const out = [];
-  for (const color of SIDES) {
+  for (const color of sidesOf(state)) {
     const pawns = state.pawns[color];
     for (let i = 0; i < pawns.length; i++) {
       if (pawns[i] === ringIndex) out.push({ color, index: i });
@@ -154,6 +177,21 @@ export function walk(color, pos, n) {
   if (intoCol <= COL_LEN) return { to: COL_BASE + (intoCol - 1), crossed };
   if (intoCol === COL_LEN + 1) return { to: HOME, crossed };
   return null;                                    // overshot the centre
+}
+
+// Every position a pawn passes through on its way, a step at a time, so the
+// screen can walk it across the board rather than teleporting it. Positions
+// come back in the same encoding as pawns: ring index, column, or HOME.
+export function pathOf(color, from, n) {
+  const out = [];
+  let pos = from;
+  for (let k = 0; k < n; k++) {
+    const step = walk(color, pos, 1);
+    if (!step) break;
+    pos = step.to;
+    out.push(pos);
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -268,11 +306,45 @@ function applySixRule(state, actions) {
   return filtered;
 }
 
+// The moves the rules take out of your hands. Everything else is yours to
+// choose, and the screen should not be playing it for you.
+//
+//   · A 5 while a pawn is still in the corner has to bring it out, if the
+//     entry square will take it. legalActions only ever offers one such
+//     move, because the four pawns in a corner are interchangeable.
+//   · A 6 has to break your own wall when it legally can. applySixRule has
+//     already thrown away every other use of that 6, so what is left here
+//     is the compulsion itself.
+//
+// Returns an empty list when nothing is forced. More than one entry means
+// the rules compel you to do *something* but leave you the choice of which.
+export function compelled(state) {
+  const acts = legalActions(state);
+  if (!acts.length) return [];
+
+  const exits = acts.filter((a) => a.type === 'exit');
+  if (exits.length) return exits;
+
+  const barriers = ownBarriers(state, state.turn);
+  if (!barriers.length) return [];
+
+  const pending = state.pending || [];
+  const sixes = [];
+  for (let i = 0; i < pending.length; i++) {
+    if (pending[i].kind === 'die' && pending[i].v === 6) sixes.push(i);
+  }
+  if (!sixes.length) return [];
+
+  return acts.filter((a) => a.type === 'move'
+    && a.use.some((i) => sixes.includes(i))
+    && barriers.includes(state.pawns[state.turn][a.pawn]));
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Playing a move
 // ═══════════════════════════════════════════════════════════════════════
 
-export const NAMES = { red: 'Red', blue: 'Blue' };
+export const NAMES = { red: 'Red', green: 'Green', blue: 'Blue', yellow: 'Yellow' };
 
 function note(state, text) {
   state.log = [...(state.log || []), { t: text, c: state.turn }].slice(-40);
@@ -408,7 +480,7 @@ function settle(s) {
 }
 
 function nextTurn(s) {
-  s.turn = other(s.turn);
+  s.turn = nextSide(s);
   s.phase = 'roll';
   s.dice = null;
   s.pending = [];
@@ -426,23 +498,31 @@ function nextTurn(s) {
 // rather than reappearing with every pawn on the wrong square.
 export const BOARD_REV = 2;
 
-export function newGame(first = 'red') {
+// `sides` is the roster in play, and `bots` names the seats the computer
+// takes. Both live in the game state rather than in either device's head, so
+// two phones watching the same game always agree on who is playing and who
+// is being played for.
+export function newGame({ first = 'red', sides = TWO, bots = [] } = {}) {
+  const roster = ORDER.filter((c) => sides.includes(c));
+  const start = roster.includes(first) ? first : roster[0];
+  const pawns = {};
+  for (const c of roster) pawns[c] = Array(PAWNS_PER_SIDE).fill(NEST);
+
   return {
     board: BOARD_REV,
     rev: 0,
     phase: 'roll',
-    turn: first,
+    turn: start,
+    sides: roster,
+    bots: roster.filter((c) => bots.includes(c)),
     dice: null,
     pending: [],
-    pawns: {
-      red:  Array(PAWNS_PER_SIDE).fill(NEST),
-      blue: Array(PAWNS_PER_SIDE).fill(NEST),
-    },
+    pawns,
     doubles: 0,
     nestTries: 0,
     rolledAt: 0,
     winner: null,
-    log: [{ t: `${NAMES[first]} starts.`, c: first }],
+    log: [{ t: `${NAMES[start]} starts.`, c: start }],
   };
 }
 
