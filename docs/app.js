@@ -12,7 +12,7 @@
 import {
   NEST, HOME, COL_BASE, SIDES, ENTRY, SAFE, NAMES, other,
   newGame, rollDice, applyRoll, applyAction, legalActions,
-  onRing, inCol,
+  onRing, inCol, progress, BOARD_REV,
 } from './rules.js';
 
 import { RING, COLUMN, NEST_BOX, nestSlots, homeSlot, GRID } from './board.js';
@@ -29,6 +29,17 @@ let game = null;       // the live board
 let myColor = null;
 let sel = null;        // the pawn the player has tapped
 let lastRoll = 0;      // so the dice only tumble on a fresh roll
+let thinking = false;  // the computer is mid-turn; keep hands off the board
+
+// Playing the computer is a local-only affair: it takes blue, you take red.
+// Kept in this device's own storage, so it never travels to the other phone.
+const BOT_LEVELS = ['off', 'easy', 'hard'];
+const BOT_LABEL = { off: 'Off', easy: 'Easy', hard: 'Hard' };
+let bot = BOT_LEVELS.includes(localStorage.getItem('parchis-bot'))
+  ? localStorage.getItem('parchis-bot')
+  : 'off';
+
+const botPlays = (color) => LOCAL && bot !== 'off' && color === 'blue';
 
 const $ = (id) => document.getElementById(id);
 
@@ -99,12 +110,21 @@ function buildBoard() {
       x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.2,
       fill: live ? TINT[owner] : '#1B222C',
       'fill-opacity': live ? 0.5 : 1,
-      stroke: safe ? '#D6A93B' : '#232B36',
-      'stroke-opacity': safe ? 0.75 : 1,
-      'stroke-width': safe ? 0.075 : 0.05,
+      stroke: safe ? '#E8C05A' : '#232B36',
+      'stroke-opacity': safe ? 0.9 : 1,
+      'stroke-width': safe ? 0.09 : 0.05,
     }, cells);
 
-    if (safe && !live) star(cells, c.x + 0.5, c.y + 0.5, 0.24);
+    // Safe squares carry a ring you can pick out at arm's length, the way
+    // they are marked on a printed board. A hairline outline was not enough.
+    if (safe) {
+      svg('circle', {
+        cx: c.x + 0.5, cy: c.y + 0.5, r: 0.3,
+        fill: 'none', stroke: '#E8C05A',
+        'stroke-opacity': live ? 0.95 : 0.72,
+        'stroke-width': 0.11,
+      }, cells);
+    }
   });
 
   // ── The four home columns ────────────────────────────────────────
@@ -137,6 +157,9 @@ function buildBoard() {
   for (const color of SIDES) {
     for (let i = 0; i < 4; i++) {
       const g = svg('g', { class: 'pawn', 'data-color': color, 'data-i': i }, gPawns);
+      // An invisible disc wider than the pawn itself, so a thumb aimed
+      // roughly at a piece still lands on it. It never changes size.
+      svg('circle', { class: 'hit', r: 0.78, fill: 'transparent' }, g);
       svg('circle', { r: 0.34, fill: 'rgba(0,0,0,.45)', cy: 0.07 }, g);
       svg('circle', {
         r: 0.34, fill: TINT[color],
@@ -149,16 +172,6 @@ function buildBoard() {
   }
 
   board.addEventListener('click', () => { sel = null; render(); });
-}
-
-function star(parent, cx, cy, r) {
-  const pts = [];
-  for (let i = 0; i < 10; i++) {
-    const rad = i % 2 ? r * 0.44 : r;
-    const a = (Math.PI / 5) * i - Math.PI / 2;
-    pts.push(`${(cx + Math.cos(a) * rad).toFixed(3)},${(cy + Math.sin(a) * rad).toFixed(3)}`);
-  }
-  svg('polygon', { points: pts.join(' '), fill: '#D6A93B', 'fill-opacity': 0.5 }, parent);
 }
 
 // ── Where each pawn should be sitting right now ─────────────────────
@@ -192,16 +205,18 @@ function layout(state) {
     list.forEach((p, n) => {
       if (p.pos === HOME) {
         const s = homeSlot(p.color, n);
-        out[p.id] = { x: s.x + 0.5, y: s.y + 0.5, r: 0.19 };
+        out[p.id] = { x: s.x + 0.5, y: s.y + 0.5, r: 0.22 };
         return;
       }
+      // Pawns sharing a square lean apart rather than shrink. A wall is
+      // exactly when you most need to see what is standing there.
       const cell = cellOf(p.color, p.pos);
       const many = list.length > 1;
-      const off = many ? -0.15 + (n * 0.3) / (list.length - 1) : 0;
+      const off = many ? -0.19 + (n * 0.38) / (list.length - 1) : 0;
       out[p.id] = {
         x: cell.x + 0.5 + off,
         y: cell.y + 0.5 + off,
-        r: list.length > 2 ? 0.2 : many ? 0.26 : 0.34,
+        r: list.length > 2 ? 0.27 : many ? 0.3 : 0.36,
       };
     });
   }
@@ -232,6 +247,25 @@ function actionsFor(pawn) {
 // In local mode whoever is to move is "you".
 const seatColor = () => (LOCAL ? game.turn : myColor);
 
+// Which way up the board is drawn. On a phone of your own it turns so your
+// colour is nearest you. Sharing one screen it must not turn at all: a board
+// that spins through 180° every turn is impossible to keep track of.
+const viewColor = () => (LOCAL ? 'red' : myColor);
+
+// Two actions that start on the same square, spend the same dice and finish
+// on the same square are the same move wearing different pawns. Collapsing
+// them keeps the list honest and stops a forced move looking like a choice.
+function distinctActions(acts) {
+  const seen = new Map();
+  for (const a of acts) {
+    const from = game.pawns[game.turn][a.pawn];
+    const spent = a.use.map((i) => game.pending[i].v).sort((x, y) => x - y).join('+');
+    const key = `${a.type}:${from}>${a.to}:${spent}`;
+    if (!seen.has(key)) seen.set(key, a);
+  }
+  return [...seen.values()];
+}
+
 function render() {
   // The board arrives over the wire before a seat has been picked, and
   // there is nothing to draw until we know which side we are.
@@ -258,13 +292,14 @@ function render() {
   if (sel !== null && !movable.has(sel)) sel = null;
 
   // ── Pawns ────────────────────────────────────────────────────────
-  gRoot.setAttribute('transform', color === 'blue' ? 'rotate(180 9.5 9.5)' : '');
+  gRoot.setAttribute('transform', viewColor() === 'blue' ? 'rotate(180 9.5 9.5)' : '');
 
   const spots = layout(game);
   for (const [id, node] of Object.entries(pawnNodes)) {
     const s = spots[id];
     node.setAttribute('transform', `translate(${s.x.toFixed(3)} ${s.y.toFixed(3)})`);
     for (const c of node.querySelectorAll('circle')) {
+      if (c.classList.contains('hit')) continue;      // the tap disc stays put
       if (!c.hasAttribute('data-base')) c.setAttribute('data-base', c.getAttribute('r'));
       const base = Number(c.getAttribute('data-base'));
       c.setAttribute('r', (base * (s.r / 0.34)).toFixed(3));
@@ -294,14 +329,48 @@ function render() {
       svg('circle', { cx, cy, r: 0.42 }, g);
       const t = svg('text', { x: cx, y: cy }, g);
       t.textContent = steps;
-      if (color === 'blue') t.setAttribute('transform', `rotate(180 ${cx} ${cy})`);
+      if (viewColor() === 'blue') t.setAttribute('transform', `rotate(180 ${cx} ${cy})`);
 
       g.addEventListener('click', (e) => { e.stopPropagation(); play(a); });
     }
   }
 
   renderHeader();
+  renderMoves(mine);
   renderPanel(mine);
+}
+
+// What a move is called, in words rather than co-ordinates.
+function moveLabel(a) {
+  const steps = a.use.reduce((n, i) => n + game.pending[i].v, 0);
+  let what;
+  if (a.type === 'exit') what = 'Bring a pawn out';
+  else if (a.to === HOME) what = `Pawn ${a.pawn + 1} all the way in`;
+  else if (inCol(a.to)) what = `Pawn ${a.pawn + 1} up your own column`;
+  else what = `Pawn ${a.pawn + 1} forward ${steps}`;
+  if (a.capture) what += `, sending ${NAMES[a.capture.color]} home`;
+  return what;
+}
+
+// Every real choice, as a button the width of the screen. A forced move is
+// never listed — by the time this runs, autoPlay has already made it.
+function renderMoves(mine) {
+  const box = $('moves');
+  box.innerHTML = '';
+  if (thinking || !mine || game.winner || game.phase !== 'move') return;
+
+  const acts = distinctActions(legalActions(game));
+  if (acts.length < 2) return;
+
+  for (const a of acts) {
+    const b = document.createElement('button');
+    b.className = `move${a.capture ? ' eat' : ''}${a.home ? ' in' : ''}`;
+    b.innerHTML = '<span class="what"></span><span class="tag"></span>';
+    b.children[0].textContent = moveLabel(a);
+    b.children[1].textContent = a.capture ? '+20' : a.home ? '+10' : '';
+    b.addEventListener('click', () => play(a));
+    box.appendChild(b);
+  }
 }
 
 function renderHeader() {
@@ -359,6 +428,10 @@ function renderPanel(mine) {
       : game.winner === color ? 'You win' : `${foeName} wins`;
     rollBtn.textContent = 'New game';
     rollBtn.disabled = false;
+  } else if (thinking) {
+    status.textContent = `${NAMES[other('red')]} is thinking`;
+    rollBtn.textContent = 'Roll';
+    rollBtn.disabled = true;
   } else if (!LOCAL && !seats[other(color)]) {
     status.textContent = 'Waiting for the other side to be taken';
     rollBtn.textContent = 'Roll';
@@ -369,12 +442,12 @@ function renderPanel(mine) {
     rollBtn.disabled = true;
   } else if (game.phase === 'roll') {
     status.classList.add('you');
-    status.textContent = LOCAL ? `${NAMES[color]} to roll` : 'Your turn';
+    status.textContent = LOCAL && bot === 'off' ? `${NAMES[color]} to roll` : 'Your turn';
     rollBtn.textContent = 'Roll';
     rollBtn.disabled = false;
   } else {
     status.classList.add('you');
-    status.textContent = sel === null ? 'Pick a pawn' : 'Pick a square';
+    status.textContent = 'Choose your move';
     rollBtn.textContent = 'Roll';
     rollBtn.disabled = true;
   }
@@ -417,12 +490,83 @@ function tapPawn(color, i) {
 async function play(action) {
   sel = null;
   await commit(applyAction(game, action));
+  await settleTurn();
 }
 
 async function doRoll() {
   if (game.winner) return startGame();
+  if (thinking) return;
   sel = null;
   await commit(applyRoll(game, rollDice()));
+  await settleTurn();
+}
+
+// After anything happens: play out whatever was never a decision, then hand
+// over to the computer if it is sitting opposite.
+async function settleTurn() {
+  await autoPlay();
+  await botTurn();
+}
+
+// A move with only one answer is not a question. When the dice leave exactly
+// one thing to do, do it — rather than disabling the dice and waiting for the
+// player to find the one square that lets the game continue.
+async function autoPlay() {
+  let guard = 0;
+  while (guard++ < 60) {
+    if (!game || game.winner || game.phase !== 'move') return;
+    if (!LOCAL && game.turn !== myColor) return;
+    const acts = distinctActions(legalActions(game));
+    if (acts.length !== 1) return;
+    sel = null;
+    await commit(applyAction(game, acts[0]));
+  }
+}
+
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+// The computer's turn, played out slowly enough to watch.
+async function botTurn() {
+  if (thinking || !game || game.winner || !botPlays(game.turn)) return;
+  thinking = true;
+  render();
+  try {
+    let guard = 0;
+    while (!game.winner && botPlays(game.turn) && guard++ < 300) {
+      await sleep(560);
+      if (game.phase === 'roll') { await commit(applyRoll(game, rollDice())); continue; }
+      const acts = distinctActions(legalActions(game));
+      if (!acts.length) break;
+      const pick = bot === 'hard'
+        ? bestAction(acts)
+        : acts[Math.floor(Math.random() * acts.length)];
+      await commit(applyAction(game, pick));
+    }
+  } finally {
+    thinking = false;
+    render();
+  }
+}
+
+// A rough sense of a good move. Nothing clever: take the capture, get a pawn
+// in, get out of the corner, prefer a safe square to a bare one, and failing
+// all that push the pawn that is furthest along.
+function bestAction(acts) {
+  const color = game.turn;
+  let best = acts[0];
+  let bestScore = -Infinity;
+  for (const a of acts) {
+    const from = game.pawns[color][a.pawn];
+    let s = progress(color, a.to) * 0.35;
+    if (a.capture) s += 70;
+    if (a.home) s += 90;
+    if (a.type === 'exit') s += 35;
+    if (inCol(a.to)) s += 25;
+    if (onRing(a.to) && SAFE.has(a.to)) s += 14;
+    if (onRing(from) && SAFE.has(from) && onRing(a.to) && !SAFE.has(a.to)) s -= 10;
+    if (s > bestScore) { bestScore = s; best = a; }
+  }
+  return best;
 }
 
 // Push a new state everywhere. Firestore's local cache echoes the write
@@ -465,6 +609,24 @@ function openMenu() {
 
     add(inner, 'How it plays', '', () => { close(); openRules(); });
 
+    // Playing the computer means playing on this device alone, so away from
+    // the shared board rather than on top of it.
+    if (LOCAL) {
+      add(inner, 'Play the computer', BOT_LABEL[bot], () => {
+        bot = BOT_LEVELS[(BOT_LEVELS.indexOf(bot) + 1) % BOT_LEVELS.length];
+        localStorage.setItem('parchis-bot', bot);
+        close();
+        render();
+        botTurn();
+      });
+      add(inner, 'Back to the real game', '', () => { location.href = location.pathname; });
+    } else {
+      add(inner, 'Play the computer', '', () => {
+        if (bot === 'off') { bot = 'hard'; localStorage.setItem('parchis-bot', 'hard'); }
+        location.href = `${location.pathname}?local=1`;
+      });
+    }
+
     add(inner, 'New game', '', async () => {
       close();
       if (game && !game.winner && !confirm('Abandon the game in progress?')) return;
@@ -504,11 +666,15 @@ function openRules() {
         <li>Four pawns each. Roll <b>two dice</b> and play each one as its own
             move, on any of your pawns, in whichever order you like. Both dice
             may go to the same pawn.</li>
-        <li>A pawn leaves its corner on a <b>5</b>, either on one die or across
-            both. With all four still in, you get three rolls to find one.</li>
-        <li><b>Starred squares are safe.</b> Nobody is captured there. Landing on
-            a lone enemy anywhere else sends it home and pays you a
-            <b>bonus 20</b>.</li>
+        <li>A pawn leaves its corner on a <b>5</b> — either a die showing 5, or
+            two dice adding up to 5, so <b>1+4</b> and <b>2+3</b> open the door
+            just the same. Nothing else does. With all four still in, you get
+            three rolls to find one, then the turn passes.</li>
+        <li>You come out onto the square against your own corner, and from
+            there you have <b>63 squares</b> to cross before your ramp.</li>
+        <li><b>Ringed squares are safe.</b> Nobody is captured there, and you and
+            your opponent can stand on one together. Landing on a lone enemy
+            anywhere else sends it home and pays you a <b>bonus 20</b>.</li>
         <li>Coming out of your corner is the one exception: it clears an enemy
             off your own entry square.</li>
         <li>Two pawns on one square make a <b>wall</b>. Nothing passes it or lands
@@ -538,7 +704,7 @@ async function startGame() {
   const fresh = newGame(first);
   fresh.id = `${Date.now()}`;
   sel = null;
-  if (LOCAL) { game = fresh; render(); return; }
+  if (LOCAL) { game = fresh; render(); await botTurn(); return; }
   await save(fresh);
 }
 
@@ -617,8 +783,19 @@ async function connect() {
     }
     game = snap.data();
     sel = null;
+
+    // The board changed shape under this game. Its pawn positions now point
+    // at different squares, so there is nothing to salvage — deal again.
+    if (game.board !== BOARD_REV) {
+      booted();
+      if (myColor) { startGame(); return; }
+    }
+
     booted();
     render();
+    // A forced move should not wait on a tap here either. Only the player
+    // whose turn it is gets past the guard inside, so both phones stay put.
+    autoPlay();
     if (game.winner && game.id) recordWin(game.id, game.winner).catch(() => {});
   }, fatal);
 }

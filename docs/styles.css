@@ -191,6 +191,46 @@ body {
 .status.you  { color: var(--pop); }
 .status.over { color: var(--ink); font-size: 18px; }
 
+/* ── The moves ──────────────────────────────────────────────────────
+   Every choice open to you, full width and thumb-high. The board is a
+   picture; these are the controls. A move you cannot miss beats a
+   marker you have to aim at. */
+.moves {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+.moves:empty { display: none; }
+
+.move {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 600 15px/1.25 inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .1s, background .15s, border-color .15s;
+}
+.move:active { transform: translateY(2px); background: var(--bg-soft); }
+.move .what  { flex: 1; }
+.move .tag   { font-weight: 800; font-size: 13px; color: var(--pop); }
+.move .tag:empty { display: none; }
+
+.move.eat { border-color: #8E241D; }
+.move.eat .tag { color: #F0776B; }
+.move.in  { border-color: #9C7415; }
+
 .controls {
   display: flex;
   align-items: center;

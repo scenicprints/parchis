@@ -6,15 +6,17 @@
 //  which is the whole reason the rules can be tested on their own.
 //
 //  The board, in numbers:
-//    · 68 squares in the outer ring, numbered 0–67 clockwise
+//    · 68 squares in the outer ring, numbered 0–67 anticlockwise
 //    · the four entry squares sit 17 apart
+//    · 63 squares from a pawn's own entry round to its own ramp
 //    · 7 squares in each colour's home column, then the centre
-//    · a full lap for one pawn is 68 + 7 + 1 = 76 steps
+//    · a whole journey for one pawn is 1 + 63 + 7 + 1 = 72 steps
 // ═══════════════════════════════════════════════════════════════════════
 
 export const RING_LEN = 68;
 export const COL_LEN  = 7;
-export const ROUTE_LEN = RING_LEN + COL_LEN + 1;   // 76
+export const LAP_LEN  = 63;                        // entry → own ramp
+export const ROUTE_LEN = LAP_LEN + COL_LEN + 2;    // 72
 
 // ── How a pawn's position is stored ───────────────────────────────────
 // A single integer, so the whole game state stays flat enough for Firestore.
@@ -25,16 +27,17 @@ export const HOME     = 200;         // finished, in the centre
 export const inCol = (p) => p >= COL_BASE && p < COL_BASE + COL_LEN;
 export const onRing = (p) => p >= 0 && p < RING_LEN;
 
-// ── Where each colour joins the ring ──────────────────────────────────
-// Entries are 17 apart. A pawn leaves its nest onto ENTRY, travels 67
-// squares clockwise, lands on TURN_IN, and the next step takes it off the
-// ring and into its own column.
-export const ENTRY = { blue: 9, green: 26, red: 43, yellow: 60 };
-
-export const TURN_IN = {};
-for (const c of Object.keys(ENTRY)) {
-  TURN_IN[c] = (ENTRY[c] + RING_LEN - 1) % RING_LEN;
-}
+// ── Where each colour joins and leaves the ring ───────────────────────
+// A pawn leaves its nest onto ENTRY — the square hard against its own
+// corner — crosses LAP_LEN squares, lands on TURN_IN, and the next step
+// takes it off the ring and into its own column.
+//
+// TURN_IN is the tip of the colour's own arm and is stated outright rather
+// than derived from ENTRY: the ramp and the door are 63 squares apart, not
+// neighbours, and tying one to the other is what put every entry on the
+// wrong side of its corner.
+export const ENTRY   = { red: 14, green: 31, blue: 48, yellow: 65 };
+export const TURN_IN = { red:  9, green: 26, blue: 43, yellow: 60 };
 
 // ── The twelve safe squares ───────────────────────────────────────────
 // Each colour's entry, plus the squares 7 and 12 beyond it. Nothing can be
@@ -66,7 +69,7 @@ export const MAX_DOUBLES   = 3;   // the third one costs you your lead pawn
 export function progress(color, pos) {
   if (pos === NEST) return 0;
   if (pos === HOME) return ROUTE_LEN;
-  if (inCol(pos)) return RING_LEN + 1 + (pos - COL_BASE);
+  if (inCol(pos)) return LAP_LEN + 2 + (pos - COL_BASE);
   return 1 + ((pos - ENTRY[color] + RING_LEN) % RING_LEN);
 }
 
@@ -418,8 +421,14 @@ function nextTurn(s) {
 //  Setting up
 // ═══════════════════════════════════════════════════════════════════════
 
+// Bumped whenever the board itself changes shape. A saved game stores it, so
+// a game left running under an older board can be spotted and started again
+// rather than reappearing with every pawn on the wrong square.
+export const BOARD_REV = 2;
+
 export function newGame(first = 'red') {
   return {
+    board: BOARD_REV,
     rev: 0,
     phase: 'roll',
     turn: first,

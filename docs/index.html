@@ -17,7 +17,7 @@
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <!-- ?v= is bumped on every deploy so phones never run a stale copy -->
-  <link rel="stylesheet" href="styles.css?v=1">
+  <link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
 
@@ -46,6 +46,9 @@
 
   <footer class="panel">
     <div class="status" id="status">Connecting</div>
+    <!-- Every move you could make, as a button you cannot miss. The board
+         is a picture; this is the interface. -->
+    <div class="moves" id="moves"></div>
     <div class="controls">
       <div class="dicebar" id="dicebar"></div>
       <button class="roll" id="btn-roll" disabled>Roll</button>
@@ -85,6 +88,6 @@
 <div id="boot"><div class="wm">Parchís</div></div>
 <div id="fatal" class="hidden"></div>
 
-<script type="module" src="app.js?v=1"></script>
+<script type="module" src="app.js?v=2"></script>
 </body>
 </html>
