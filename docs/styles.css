@@ -5,6 +5,12 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 :root {
+  /* Keeps Android's auto-dark theme off the board. Chrome will happily
+     invert a page it decides is light, which rendered the printed white
+     board as a near-black negative on a real phone while leaving the
+     saturated colours alone. Declaring a scheme opts out of all that. */
+  color-scheme: dark;
+
   --bg:        #0B0F15;
   --bg-soft:   #131A23;
   --line:      #1E2632;
@@ -142,15 +148,23 @@ body {
 .stage {
   flex: 1;
   display: grid;
+  /* Explicit tracks, both able to shrink, so the board is measured against
+     the space it actually has rather than against a track that sized itself
+     to the board. Belt and braces: it behaved before, but only by luck of
+     how the auto track happened to resolve. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   padding: 12px;
   min-height: 0;
+  min-width: 0;
 }
 
 /* The rim, the surface and every tile are drawn inside the SVG now; the
    page only hangs the shadow that seats the board on the table. */
 #board {
-  width: min(100%, 100cqh, 560px);
+  width: min(100%, 560px);
+  max-width: 100%;
   max-height: 100%;
   aspect-ratio: 1;
   display: block;
