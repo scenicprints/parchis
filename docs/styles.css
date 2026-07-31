@@ -170,7 +170,7 @@ body {
    the eye can follow the pawn round the track instead of losing it. */
 .pawn.walking {
   transition: transform .07s linear;
-  filter: drop-shadow(0 0 5px rgba(255,255,255,.4));
+  filter: drop-shadow(0 0 5px rgba(0,0,0,.45));
 }
 .pawn.mine.live { cursor: pointer; }
 
@@ -182,8 +182,8 @@ body {
 .pawn .halo { display: none; }
 .pawn.live .halo {
   display: block;
-  stroke: #F2C14E;
-  stroke-width: .09;
+  stroke: #C77800;
+  stroke-width: .1;
   animation: beckon 1.4s ease-in-out infinite;
 }
 
@@ -203,8 +203,9 @@ body {
   to   { opacity: 1; transform: scale(1); }
 }
 /* Destinations are the only gold discs on the board now — the safe-square
-   rings that used to compete with them are stamped stars instead. */
-.marker circle { fill: rgba(242,193,78,.3); stroke: var(--pop); stroke-width: .09; }
+   rings that used to compete with them are stamped stars instead. The gold
+   runs darker than the app's own: pale gold vanishes on an ivory board. */
+.marker circle { fill: rgba(242,193,78,.5); stroke: #9A741D; stroke-width: .09; }
 
 /* The oversized tap targets are there to be hit, never to be seen. A fill is
    still needed to catch the tap, so it has to be transparent rather than
@@ -213,12 +214,12 @@ body {
 .marker circle.hit,
 .pawn circle.hit { fill: transparent; stroke: none; }
 .marker text {
-  fill: var(--pop);
+  fill: #5F430D;
   font: 800 .46px/1 ui-rounded, system-ui, sans-serif;
   text-anchor: middle;
   dominant-baseline: central;
 }
-.marker.eat circle { fill: rgba(228,68,58,.3); stroke: var(--red); }
+.marker.eat circle { fill: rgba(228,68,58,.45); stroke: #8E241D; }
 .marker.eat text   { fill: #fff; }
 
 /* ── Bottom panel ────────────────────────────────────────────────── */

@@ -85,7 +85,7 @@ function svg(tag, attrs = {}, parent = null) {
 const TINT  = { red: '#E4443A', blue: '#3D8BFD', green: '#3FAE63', yellow: '#E3B23C' };
 const EDGE  = { red: '#8E241D', blue: '#1B4C96', green: '#1F6B39', yellow: '#8A6614' };
 const LIGHT = { red: '#FF8B7B', blue: '#8FBCFF', green: '#8BDFA6', yellow: '#F8DE8C' };
-const DIM   = '#2E3A47';                // an arm nobody is playing
+const DIM   = '#CFC29B';                // an arm nobody is playing
 
 // Who is in this game. Two-handed until a roster says otherwise.
 let PLAYED = new Set(TWO);
@@ -124,14 +124,15 @@ function buildBoard(roster = TWO) {
     stops(svg('radialGradient', { id, ...attrs }, defs), list);
 
   lin('brd-frame', [['0', '#E7C371'], ['0.45', '#A87B33'], ['1', '#6E4D1B']]);
-  rad('brd-surface', [['0', '#182028'], ['1', '#0F141B']],
+  // The playing surface is ivory, the way the board is printed in the real
+  // world. Dark pieces on dark squares on a dark table was three shades of
+  // the same night; on light ground everything on the board simply shows.
+  rad('brd-surface', [['0', '#FAF3E0'], ['1', '#E8DBBA']],
       { cx: 0.5, cy: 0.42, r: 0.75 });
-  // The track has to sit clearly above the table it is printed on, or the
-  // loop never reads as a road and the eye has nothing to follow.
-  lin('brd-cell', [['0', '#3D4A5D'], ['1', '#2B3648']]);
+  lin('brd-cell', [['0', '#FFFBEF'], ['1', '#F0E6CC']]);
   rad('brd-centre', [['0', '#1B2432'], ['1', '#0C1017']]);
   rad('brd-jewel', [['0', '#FFEDB0'], ['1', '#C79A34']], { cx: 0.4, cy: 0.35, r: 0.8 });
-  rad('brd-well', [['0', '#0E1520'], ['1', '#070A0F']]);
+  rad('brd-well', [['0', '#E4D8B4'], ['1', '#C9BB92']]);
   for (const c of ORDER) {
     // A tile of the colour, lit from above…
     lin(`tile-${c}`, [['0', LIGHT[c]], ['0.35', TINT[c]], ['1', EDGE[c]]]);
@@ -158,10 +159,10 @@ function buildBoard(roster = TWO) {
     const live = PLAYED.has(color);
     svg('rect', {
       x: b.x + 0.35, y: b.y + 0.35, width: 7.3, height: 7.3, rx: 1.1,
-      fill: live ? TINT[color] : '#131820',
-      'fill-opacity': live ? 0.15 : 1,
-      stroke: live ? TINT[color] : '#1C242F',
-      'stroke-opacity': live ? 0.55 : 1,
+      fill: live ? TINT[color] : '#E8DEC2',
+      'fill-opacity': live ? 0.2 : 1,
+      stroke: live ? TINT[color] : '#CCBF99',
+      'stroke-opacity': live ? 0.75 : 1,
       'stroke-width': 0.09,
     }, cells);
 
@@ -196,8 +197,8 @@ function buildBoard(roster = TWO) {
     svg('rect', {
       x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.24,
       fill: live ? `url(#tile-${owner})` : 'url(#brd-cell)',
-      'fill-opacity': live ? 0.85 : 1,
-      stroke: live ? EDGE[owner] : '#2A3340',
+      'fill-opacity': live ? 0.9 : 1,
+      stroke: live ? EDGE[owner] : '#C6B88E',
       'stroke-opacity': live ? 0.8 : 1,
       'stroke-width': 0.045,
     }, cells);
@@ -215,8 +216,10 @@ function buildBoard(roster = TWO) {
       }
       svg('polygon', {
         points: pts.join(' '),
-        fill: live ? 'rgba(255,255,255,.5)' : 'rgba(232,192,90,.4)',
-        stroke: 'rgba(0,0,0,.3)', 'stroke-width': 0.03,
+        // White on a coloured entry square, dark gold on ivory. Either way
+        // it is a printed mark, not a signal.
+        fill: live ? 'rgba(255,255,255,.6)' : 'rgba(154,117,38,.5)',
+        stroke: 'rgba(0,0,0,.25)', 'stroke-width': 0.03,
       }, cells);
     }
   });
@@ -227,13 +230,12 @@ function buildBoard(roster = TWO) {
     COLUMN[color].forEach((c, i) => {
       svg('rect', {
         x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.24,
-        fill: live ? `url(#tile-${color})` : '#161C25',
-        // The ramp still brightens toward the middle, but quietly. At full
-        // paint the two columns were the loudest thing on the board, and
-        // they are the squares a pawn spends the least time on.
-        'fill-opacity': live ? 0.14 + (i / (COLUMN[color].length - 1)) * 0.3 : 1,
-        stroke: live ? EDGE[color] : '#232B36',
-        'stroke-opacity': live ? 0.35 : 1,
+        fill: live ? `url(#tile-${color})` : '#E2D7B7',
+        // The ramp brightens toward the middle, pastel against the ivory
+        // rather than the loudest paint on the board.
+        'fill-opacity': live ? 0.3 + (i / (COLUMN[color].length - 1)) * 0.35 : 1,
+        stroke: live ? EDGE[color] : '#CCBF99',
+        'stroke-opacity': live ? 0.4 : 1,
         'stroke-width': 0.045,
       }, cells);
     });
