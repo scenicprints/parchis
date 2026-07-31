@@ -938,17 +938,24 @@ async function connect() {
     localCache: fs.persistentLocalCache({ tabManager: fs.persistentSingleTabManager() }),
   });
 
-  TABLE = fs.doc(db, 'parchis', 'table');
-  GAME = fs.doc(db, 'parchis', 'game');
+  // ?room=<name> plays somewhere else entirely, so seats and boards can be
+  // broken on purpose without touching the game the two of you are in.
+  const room = new URLSearchParams(location.search).get('room');
+  const suffix = room ? `-${room.replace(/[^a-z0-9-]/gi, '')}` : '';
+  TABLE = fs.doc(db, 'parchis', `table${suffix}`);
+  GAME = fs.doc(db, 'parchis', `game${suffix}`);
 
   save = (state) => fs.setDoc(GAME, state);
 
+  // A seat is held by a browser's anonymous id, and that id does not survive
+  // a reinstall or a switch of browser. So a held seat can always be taken,
+  // with the screen asking first. Refusing was what left a phone locked out
+  // of a game it had been playing an hour earlier, with both sides spoken
+  // for and nothing on the page able to release either.
   claimSeat = (color, name) => fs.runTransaction(db, async (tx) => {
     const snap = await tx.get(TABLE);
     const t = snap.exists() ? snap.data() : { seats: {}, score: { red: 0, blue: 0 } };
     const seats = { ...(t.seats || {}) };
-    const held = seats[color];
-    if (held?.uid && held.uid !== uid) throw new Error('That side is already taken.');
     // One person cannot hold both sides. Null rather than delete, because a
     // merged write leaves a removed key exactly where it was.
     const foe = other(color);
@@ -1025,8 +1032,12 @@ function settleSeat() {
   myColor = null;
   for (const c of SIDES) {
     const held = seats[c];
+    const btn = document.querySelector(`.seatbtn.${c}`);
     $(`who-${c}`).textContent = held?.name ? held.name : 'Open';
-    document.querySelector(`.seatbtn.${c}`).disabled = Boolean(held?.uid);
+    // Never disabled. A taken seat still has to be pressable, or a phone
+    // that has lost its old identity has no way back into its own game.
+    btn.disabled = false;
+    btn.classList.toggle('taken', Boolean(held?.uid));
   }
   $('seatpick').classList.remove('hidden');
   booted();
@@ -1038,7 +1049,11 @@ function settleSeat() {
 
 function booted() {
   const b = $('boot');
-  if (b.classList.contains('gone')) return;
+  // Called again every time the seat or the game settles, and by then this
+  // element has usually been removed. Reading through the null threw before
+  // render() could run, which is what left a phone on "Connecting" with an
+  // empty board the moment it took a seat.
+  if (!b || b.classList.contains('gone')) return;
   b.classList.add('gone');
   $('app').classList.remove('hidden');
   setTimeout(() => b.remove(), 400);
@@ -1065,12 +1080,24 @@ function wire() {
 
   for (const btn of document.querySelectorAll('.seatbtn')) {
     btn.addEventListener('click', async () => {
-      const name = $('seat-name').value.trim();
+      const color = btn.dataset.color;
+      const held = table?.seats?.[color];
+      // Coming back to a seat you already had, the name on it is the obvious
+      // one to keep, so an empty box is not a reason to refuse.
+      const name = $('seat-name').value.trim() || held?.name || '';
       if (!name) { $('seat-err').textContent = 'Put your name in first.'; return; }
+
+      if (held?.uid && held.uid !== uid &&
+          !confirm(`${held.name} is on this side. Take it over?`)) return;
+
+      $('seat-err').textContent = '';
+      btn.classList.add('busy');
       try {
-        await claimSeat(btn.dataset.color, name);
+        await claimSeat(color, name);
       } catch (err) {
-        $('seat-err').textContent = err.message;
+        $('seat-err').textContent = err?.message || String(err);
+      } finally {
+        btn.classList.remove('busy');
       }
     });
   }

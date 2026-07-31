@@ -409,6 +409,11 @@ body {
 .seatbtn.red:not(:disabled)  { border-color: var(--red-deep);  }
 .seatbtn.blue:not(:disabled) { border-color: var(--blue-deep); }
 .seatbtn:disabled { opacity: .42; cursor: default; }
+/* Somebody is on this side, but it is still pressable: that is the way back
+   in for a phone whose stored identity has gone. */
+.seatbtn.taken { opacity: .66; }
+.seatbtn.taken .who::after { content: ' · tap to take'; opacity: .75; }
+.seatbtn.busy { opacity: .4; pointer-events: none; }
 
 .seatbtn .chip { width: 26px; height: 26px; }
 .seatbtn.red  .chip { background-color: var(--red);  }
