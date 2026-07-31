@@ -174,7 +174,7 @@ body {
 }
 .pawn.mine.live { cursor: pointer; }
 
-.pawn.pick   { filter: drop-shadow(0 0 7px rgba(242,193,78,1)); }
+.pawn.pick   { filter: drop-shadow(0 0 6px rgba(199,120,0,.95)); }
 
 /* A pawn that can move wears a pulsing gold halo. The old signal was the
    whole piece fading in and out, which reads as "loading", not "press me",
@@ -202,10 +202,11 @@ body {
   from { opacity: 0; transform: scale(.5); }
   to   { opacity: 1; transform: scale(1); }
 }
-/* Destinations are the only gold discs on the board now — the safe-square
-   rings that used to compete with them are stamped stars instead. The gold
-   runs darker than the app's own: pale gold vanishes on an ivory board. */
-.marker circle { fill: rgba(242,193,78,.5); stroke: #9A741D; stroke-width: .09; }
+/* Destinations are the only gold discs on the board — the safe-square rings
+   that used to compete with them are stamped stars instead. Kept part-way
+   transparent on purpose: a marker can land on an occupied square, and a
+   solid coin would hide the pawn it is sitting on. */
+.marker circle { fill: rgba(243,195,79,.62); stroke: #7A5A0C; stroke-width: .1; }
 
 /* The oversized tap targets are there to be hit, never to be seen. A fill is
    still needed to catch the tap, so it has to be transparent rather than
@@ -214,7 +215,7 @@ body {
 .marker circle.hit,
 .pawn circle.hit { fill: transparent; stroke: none; }
 .marker text {
-  fill: #5F430D;
+  fill: #3D2A05;
   font: 800 .46px/1 ui-rounded, system-ui, sans-serif;
   text-anchor: middle;
   dominant-baseline: central;

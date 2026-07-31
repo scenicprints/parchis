@@ -85,7 +85,8 @@ function svg(tag, attrs = {}, parent = null) {
 const TINT  = { red: '#E4443A', blue: '#3D8BFD', green: '#3FAE63', yellow: '#E3B23C' };
 const EDGE  = { red: '#8E241D', blue: '#1B4C96', green: '#1F6B39', yellow: '#8A6614' };
 const LIGHT = { red: '#FF8B7B', blue: '#8FBCFF', green: '#8BDFA6', yellow: '#F8DE8C' };
-const DIM   = '#CFC29B';                // an arm nobody is playing
+const DIM   = '#D8D5CC';                // an arm nobody is playing
+const INK   = '#20272F';                // every line on the board is this
 
 // Who is in this game. Two-handed until a roster says otherwise.
 let PLAYED = new Set(TWO);
@@ -124,15 +125,17 @@ function buildBoard(roster = TWO) {
     stops(svg('radialGradient', { id, ...attrs }, defs), list);
 
   lin('brd-frame', [['0', '#E7C371'], ['0.45', '#A87B33'], ['1', '#6E4D1B']]);
-  // The playing surface is ivory, the way the board is printed in the real
-  // world. Dark pieces on dark squares on a dark table was three shades of
-  // the same night; on light ground everything on the board simply shows.
-  rad('brd-surface', [['0', '#FAF3E0'], ['1', '#E8DBBA']],
+  // Printed white, with hard dark lines. A board is legible because of the
+  // contrast between its parts, not the brightness of the whole: tinting
+  // everything the same shade, light or dark, reads as one flat field
+  // either way. So the paper is white, the ink is near-black, and every
+  // colour on the board is laid down solid.
+  rad('brd-surface', [['0', '#FFFFFF'], ['1', '#F2F0E9']],
       { cx: 0.5, cy: 0.42, r: 0.75 });
-  lin('brd-cell', [['0', '#FFFBEF'], ['1', '#F0E6CC']]);
-  rad('brd-centre', [['0', '#1B2432'], ['1', '#0C1017']]);
+  lin('brd-cell', [['0', '#FFFFFF'], ['1', '#F4F2EB']]);
+  rad('brd-centre', [['0', '#FFFFFF'], ['1', '#EDEAE1']]);
   rad('brd-jewel', [['0', '#FFEDB0'], ['1', '#C79A34']], { cx: 0.4, cy: 0.35, r: 0.8 });
-  rad('brd-well', [['0', '#E4D8B4'], ['1', '#C9BB92']]);
+  rad('brd-well', [['0', '#FFFFFF'], ['1', '#EFEDE6']]);
   for (const c of ORDER) {
     // A tile of the colour, lit from above…
     lin(`tile-${c}`, [['0', LIGHT[c]], ['0.35', TINT[c]], ['1', EDGE[c]]]);
@@ -157,30 +160,24 @@ function buildBoard(roster = TWO) {
   for (const color of Object.keys(NEST_BOX)) {
     const b = NEST_BOX[color];
     const live = PLAYED.has(color);
+    // A yard is a solid block of its colour, ruled in ink. Half-transparent
+    // washes are what made four corners of the board look like one corner.
     svg('rect', {
       x: b.x + 0.35, y: b.y + 0.35, width: 7.3, height: 7.3, rx: 1.1,
-      fill: live ? TINT[color] : '#E8DEC2',
-      'fill-opacity': live ? 0.2 : 1,
-      stroke: live ? TINT[color] : '#CCBF99',
-      'stroke-opacity': live ? 0.75 : 1,
-      'stroke-width': 0.09,
+      fill: live ? `url(#tile-${color})` : DIM,
+      stroke: INK, 'stroke-opacity': live ? 0.85 : 0.35,
+      'stroke-width': 0.1,
     }, cells);
 
     if (!live) continue;
-    // A quiet second line inside the wall, the way a printed board rules
-    // its corners twice.
-    svg('rect', {
-      x: b.x + 0.62, y: b.y + 0.62, width: 6.76, height: 6.76, rx: 0.9,
-      fill: 'none', stroke: TINT[color], 'stroke-opacity': 0.2,
-      'stroke-width': 0.05,
-    }, cells);
 
     for (const s of nestSlots(color)) {
-      // A socket a piece visibly sits in, not a flat disc.
+      // White sockets, so a piece of the yard's own colour still stands out
+      // against it instead of disappearing into it.
       svg('circle', {
         cx: s.x + 0.5, cy: s.y + 0.5, r: 0.46,
-        fill: 'url(#brd-well)', stroke: TINT[color],
-        'stroke-opacity': 0.45, 'stroke-width': 0.06,
+        fill: 'url(#brd-well)', stroke: INK,
+        'stroke-opacity': 0.75, 'stroke-width': 0.07,
       }, cells);
     }
   }
@@ -194,13 +191,13 @@ function buildBoard(roster = TWO) {
     const live = owner && PLAYED.has(owner);
     const safe = SAFE.has(i);
 
+    // Every square is ruled in the same ink, so the track reads as a chain
+    // of squares rather than a smear. This one line is what turns the ring
+    // into a road you can follow with your eye.
     svg('rect', {
-      x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.24,
+      x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.18,
       fill: live ? `url(#tile-${owner})` : 'url(#brd-cell)',
-      'fill-opacity': live ? 0.9 : 1,
-      stroke: live ? EDGE[owner] : '#C6B88E',
-      'stroke-opacity': live ? 0.8 : 1,
-      'stroke-width': 0.045,
+      stroke: INK, 'stroke-opacity': 0.55, 'stroke-width': 0.055,
     }, cells);
 
     // Safe squares are marked the way a printed board marks them: a quiet
@@ -216,10 +213,10 @@ function buildBoard(roster = TWO) {
       }
       svg('polygon', {
         points: pts.join(' '),
-        // White on a coloured entry square, dark gold on ivory. Either way
+        // White on a coloured entry square, ink on a white one. Either way
         // it is a printed mark, not a signal.
-        fill: live ? 'rgba(255,255,255,.6)' : 'rgba(154,117,38,.5)',
-        stroke: 'rgba(0,0,0,.25)', 'stroke-width': 0.03,
+        fill: live ? '#FFFFFF' : INK,
+        'fill-opacity': live ? 0.9 : 0.4,
       }, cells);
     }
   });
@@ -229,14 +226,10 @@ function buildBoard(roster = TWO) {
     const live = PLAYED.has(color);
     COLUMN[color].forEach((c, i) => {
       svg('rect', {
-        x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.24,
-        fill: live ? `url(#tile-${color})` : '#E2D7B7',
-        // The ramp brightens toward the middle, pastel against the ivory
-        // rather than the loudest paint on the board.
-        'fill-opacity': live ? 0.3 + (i / (COLUMN[color].length - 1)) * 0.35 : 1,
-        stroke: live ? EDGE[color] : '#CCBF99',
-        'stroke-opacity': live ? 0.4 : 1,
-        'stroke-width': 0.045,
+        x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.18,
+        fill: live ? `url(#tile-${color})` : DIM,
+        stroke: INK, 'stroke-opacity': live ? 0.55 : 0.3,
+        'stroke-width': 0.055,
       }, cells);
     });
   }
@@ -244,7 +237,8 @@ function buildBoard(roster = TWO) {
   // ── The centre ───────────────────────────────────────────────────
   svg('rect', {
     x: 8.1, y: 8.1, width: 2.8, height: 2.8, rx: 0.55,
-    fill: 'url(#brd-centre)', stroke: '#2A3441', 'stroke-width': 0.07,
+    fill: 'url(#brd-centre)', stroke: INK, 'stroke-opacity': 0.8,
+    'stroke-width': 0.08,
   }, cells);
   // One wedge per arm, each pointing in from the column that feeds it.
   const WEDGE = {
@@ -254,10 +248,12 @@ function buildBoard(roster = TWO) {
     red:    'M8.35 8.35 V10.65 L9.5 9.5 Z',      // in from the left arm
   };
   for (const [color, d] of Object.entries(WEDGE)) {
+    // Held back to a tint, because finished pawns pile up on top of these
+    // and a solid wedge would swallow a pawn of its own colour.
     svg('path', {
-      d, fill: PLAYED.has(color) ? `url(#tile-${color})` : DIM,
-      'fill-opacity': PLAYED.has(color) ? 0.9 : 0.5,
-      stroke: 'rgba(0,0,0,.35)', 'stroke-width': 0.03,
+      d, fill: PLAYED.has(color) ? TINT[color] : DIM,
+      'fill-opacity': PLAYED.has(color) ? 0.32 : 0.4,
+      stroke: INK, 'stroke-opacity': 0.35, 'stroke-width': 0.03,
     }, cells);
   }
   // Where all four roads end: a little gold at the very middle.
@@ -281,10 +277,12 @@ function buildBoard(roster = TWO) {
       // The halo only shows on a pawn that can move right now. It is the one
       // signal on the board that means "press this".
       svg('circle', { class: 'halo', r: 0.5, fill: 'none' }, g);
-      svg('circle', { r: 0.33, fill: 'rgba(0,0,0,.5)', cy: 0.09 }, g);
+      svg('circle', { r: 0.33, fill: 'rgba(0,0,0,.28)', cy: 0.08 }, g);
+      // Ruled in the same ink as the board. A piece outlined in its own
+      // dark shade reads as a smudge; outlined in ink it reads as a piece.
       svg('circle', {
-        r: 0.34, fill: `url(#pawn-${color})`,
-        stroke: EDGE[color], 'stroke-width': 0.06,
+        r: 0.35, fill: `url(#pawn-${color})`,
+        stroke: INK, 'stroke-opacity': 0.9, 'stroke-width': 0.075,
       }, g);
       svg('circle', { r: 0.12, cx: -0.1, cy: -0.12, fill: '#fff', 'fill-opacity': 0.4 }, g);
       pawnNodes[`${color}${i}`] = g;
