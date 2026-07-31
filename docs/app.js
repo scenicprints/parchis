@@ -613,15 +613,45 @@ async function play(action) {
 async function applyMove(action) {
   if (walking) return;
   sel = null;
-  const color = game.turn;
+
+  // Everything below reads `base`, not `game`. A pawn takes about a second
+  // to walk, and an update from the other phone can land in the middle of
+  // it and swap `game` out underneath. Applying a move to a board it was
+  // never legal on is how a turn quietly corrupts itself.
+  const base = game;
+  const color = base.turn;
   const id = `${color}${action.pawn}`;
-  const from = game.pawns[color][action.pawn];
-  const steps = action.use.reduce((n, i) => n + game.pending[i].v, 0);
+  const from = base.pawns[color][action.pawn];
+  const steps = action.use.reduce((n, i) => n + base.pending[i].v, 0);
   const path = action.type === 'exit' ? [action.to] : pathOf(color, from, steps);
 
   gMarks.innerHTML = '';                       // the markers have served
   await walkPawn(id, color, path);
-  await commit(applyAction(game, action));
+
+  // The board moved on while the pawn was walking, so this move belongs to
+  // a position that no longer exists. Drop it and let what arrived stand:
+  // writing it now would put our stale copy over somebody else's turn.
+  if (moved(base, game)) {
+    // Worth saying out loud. If this ever appears during ordinary play it
+    // means the guard is too eager and is eating real moves, which looks
+    // exactly like the desync it was written to prevent.
+    console.warn('parchis: board moved while a pawn walked, move dropped');
+    render();
+    return;
+  }
+
+  await commit(applyAction(base, action));
+}
+
+// Whether the board is somewhere different from where it was. Compared by
+// value rather than by identity, because every snapshot hands back a fresh
+// object, including the echo of our own last write.
+function moved(before, after) {
+  if (!before || !after) return before !== after;
+  return before.id !== after.id
+      || before.rev !== after.rev
+      || before.turn !== after.turn
+      || before.rolledAt !== after.rolledAt;
 }
 
 // Walk a pawn across the board a square at a time. The state has not changed
@@ -635,18 +665,24 @@ async function walkPawn(id, color, path) {
   node.classList.add('walking');
   node.parentNode.appendChild(node);            // step over anything in the way
 
-  // Long bonus moves would crawl at a fixed pace, so the stride shortens as
-  // the journey lengthens and the whole thing stays under about a second.
-  const ms = Math.max(38, Math.min(105, Math.round(900 / path.length)));
-  for (const pos of path) {
-    const cell = pos === HOME ? { x: 9, y: 9 } : cellOf(color, pos);
-    node.setAttribute('transform',
-      `translate(${(cell.x + 0.5).toFixed(3)} ${(cell.y + 0.5).toFixed(3)})`);
-    await sleep(ms);
+  // Whatever happens in here, the flag has to come back down. applyMove
+  // refuses to start while it is set and the panel reads it as somebody
+  // mid-move, so a throw part way across the board would leave this device
+  // unable to play again until the app was restarted.
+  try {
+    // Long bonus moves would crawl at a fixed pace, so the stride shortens
+    // as the journey lengthens and the whole thing stays under a second.
+    const ms = Math.max(38, Math.min(105, Math.round(900 / path.length)));
+    for (const pos of path) {
+      const cell = pos === HOME ? { x: 9, y: 9 } : cellOf(color, pos);
+      node.setAttribute('transform',
+        `translate(${(cell.x + 0.5).toFixed(3)} ${(cell.y + 0.5).toFixed(3)})`);
+      await sleep(ms);
+    }
+  } finally {
+    node.classList.remove('walking');
+    walking = null;
   }
-
-  node.classList.remove('walking');
-  walking = null;
 }
 
 async function doRoll() {
