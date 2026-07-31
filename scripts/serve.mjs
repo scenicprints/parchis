@@ -31,6 +31,19 @@ const TYPES = {
 createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
 
+  // Shots can be posted from anywhere, so the deployed site can be opened
+  // and photographed as it really is rather than as the source claims.
+  if (path.startsWith('/shot/')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+  }
+  if (req.method === 'OPTIONS' && path.startsWith('/shot/')) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   if (req.method === 'POST' && path.startsWith('/shot/')) {
     const name = path.slice(6).replace(/[^a-z0-9._-]/gi, '') || 'board.png';
     const chunks = [];

@@ -1103,6 +1103,29 @@ async function main() {
 
 main();
 
+// ── Picking up a new version ─────────────────────────────────────────
+// The worker already running is the one that serves the page you are
+// looking at. A new worker installs quietly behind it and only takes over
+// afterwards, so without this every open showed the release before last and
+// the phone sat permanently one version behind.
+//
+// When a new worker does take over, the page it is holding is already stale,
+// so reload it. Not on the very first install: there was no old worker then,
+// and nothing on screen is out of date.
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  const hadWorker = !!navigator.serviceWorker.controller;
+  let refreshing = false;
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadWorker || refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // Ask outright rather than waiting for the browser to get round to it.
+      reg.update().catch(() => {});
+    }).catch(() => {});
+  });
 }
