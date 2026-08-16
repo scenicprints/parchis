@@ -1,40 +1,55 @@
-# Parchís
+# Games
 
-Two players, one board, from anywhere. An installable web app, so it lands on
-an iPhone and an Android phone the same way with no App Store and no developer
-account.
+A two-player game hub, built as an installable web app so it lands on an
+iPhone and an Android phone the same way with no App Store and no developer
+account. Parchís is the first game in it.
 
-![the board](preview.svg)
+**<https://scenicprints.github.io/parchis/>**
+
+Carrying this on in a new session? Read [`HANDOFF.md`](HANDOFF.md) first.
 
 ---
 
-## What it is
+## The shape of it
+
+The hub owns everything true of the whole table: the two seats, the record,
+the house rules, and the single document a game is played in. A game owns its
+rules, its board and its screen, and nothing else. It is handed a board to
+show and one way to hand a new board back, and never learns that a network
+exists.
+
+```
+docs/
+  index.html          the shell
+  hub.js              identity, the wire, the lobby, which game is open
+  ui.js               the bottom sheet, borrowed by any game
+  sw.js               offline shell and the update path
+  games/
+    index.js          the registry
+    parchis/          rules.js · board.js · view.js
+test/rules.test.mjs   22 tests, including 2000 games played end to end
+scripts/              dev server, icon maker, board preview
+```
+
+Adding a game is a folder under `docs/games/` and a line in the registry.
 
 | | |
 |---|---|
-| **Rules** | Parchís, the Spanish game. Two dice, safe squares, walls, bonus 20 and 10, three doubles costs your lead pawn. The full list is in the app under **How it plays**. |
-| **Players** | Two. Red starts bottom-left, blue top-right. The board turns itself around so your own colour is always nearest you. |
-| **Online** | The whole game is one Firestore document. Either phone can move on its turn, from anywhere, and pick the game back up hours later. |
-| **Install** | Add to Home Screen on either phone. Own icon, full screen, no browser bars. |
-| **Build step** | None. Plain ES modules, the same shape as the foos app. |
+| **Players** | Two people, red and blue. Some games seat more; the rest are the computer. |
+| **Online** | One Firestore document. Either phone can move on its turn, from anywhere. |
+| **At once** | One game at a time. Starting another asks before abandoning the last. |
+| **Install** | Add to Home Screen on either phone. |
+| **Build step** | None. Plain ES modules. |
 
-## The files
+## Parchís
 
-```
-docs/                 what GitHub Pages serves
-  index.html
-  styles.css
-  rules.js            the game itself, pure, no DOM and no network
-  board.js            where all 68 squares are
-  app.js              drawing, taps, and Firestore
-  sw.js               offline shell
-test/rules.test.mjs   22 tests, including 2000 games played end to end
-scripts/              icon maker, dev server, board preview
-firestore.rules       the one thing that has to be pasted by hand
-```
+Parchís proper, not Ludo and not Hasbro Parcheesi: 68-square ring, two dice,
+twelve safe squares, walls, bonus 20 and 10, three doubles sends your lead
+pawn back. A crossing is 63 squares from your own entry to your own ramp.
+The full list is in the app under **How it plays**.
 
-`rules.js` knows nothing about the screen or the network, which is why the
-rules can be tested on their own and why the board can be driven by a script.
+`docs/games/parchis/rules.js` is pure — no DOM, no network — which is why the
+whole game can be played thousands of times in a terminal.
 
 ## Working on it
 
@@ -47,54 +62,25 @@ node scripts/serve.mjs
 ```
 
 Then <http://localhost:8099>. Add `?local=1` to play both sides on one device
-with no network at all, which is the quickest way to try a rules change.
+with no network. Add `?room=name` to play in a separate pair of documents,
+which is how to break things on purpose without touching the live game.
 
-```bash
-node scripts/make-icons.mjs
-```
+**Bump `?v=` on both links in `index.html` when you deploy**, and bump `CACHE`
+in `sw.js` if you changed which files the shell caches.
 
-Redraws the home-screen icons. `node scripts/board-preview.mjs` redraws the
-picture at the top of this file.
-
----
-
-## It is live
-
-**<https://scenicprints.github.io/parchis/>**
-
-Already done, on 2026-07-29:
-
-- Firestore rules published to **foos-6ecf3**, adding `/parchis/{doc}`
-  alongside the league's own rule. See [`firestore.rules`](firestore.rules).
-  Previous versions are kept in the console, so a rollback is one click.
-- Repo pushed to `scenicprints/parchis`, Pages serving **main /docs**.
-- Verified live: anonymous sign-in works, Firestore reads succeed, the
-  manifest and all three icons serve, and the service worker registers.
-
-### Put it on the two phones
+## Putting it on a phone
 
 - **iPhone:** open the link in **Safari**, Share, **Add to Home Screen**. It
-  has to be Safari. Chrome on iOS cannot install a web app.
+  has to be Safari; Chrome on iOS cannot install a web app.
 - **Android:** open in Chrome, menu, **Install app**.
 
-First open on each phone asks for a name and a side. Whoever goes second gets
-the side that is left. Both seats are still open.
-
-### Deploying a change
-
-Push to `main` and Pages rebuilds within a minute or so.
-
-**Bump `?v=` when you do.** `index.html` links `styles.css?v=1` and
-`app.js?v=1`. Raise the number on both when you change either, so no phone
-keeps running yesterday's copy.
-
----
+First open asks for a name and a side. If your name is already on a side, tap
+it to get back in — that is the way back after a reinstall, which gives the
+phone a new identity and leaves the old one holding the seat.
 
 ## Known gap
 
-**No push notification when it is your turn.** The app shows a live board the
-moment it is open, but it cannot tap you on the shoulder while it is closed.
-Sending a push needs a server, which means Firebase Cloud Functions and putting
-the project on the Blaze plan. Usage for two people stays inside the free
-allowance, but it does want a card on file, so it is worth deciding on rather
-than assuming.
+**No push notification when it is your turn.** The lobby shows a "Your move"
+badge while the app is open, but reaching a closed phone needs a server, which
+means Cloud Functions and the Blaze plan on a project that also holds the foos
+data. Undecided on purpose.
