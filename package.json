@@ -5,7 +5,8 @@
   "description": "Parchís for two, playable from anywhere, installable on any phone.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/rules.test.mjs",
+    "test": "node --test test/rules.test.mjs test/jass.test.mjs",
+    "test:jass": "node --test test/jass.test.mjs",
     "serve": "node scripts/serve.mjs",
     "icons": "node scripts/make-icons.mjs",
     "preview": "node scripts/board-preview.mjs"

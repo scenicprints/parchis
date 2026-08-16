@@ -209,10 +209,14 @@ function renderLobby() {
     // Whose move it is, said plainly, so the lobby is worth opening.
     let badge = '';
     if (inPlay) {
-      const waiting = open?.def.id === def.id
+      let waiting = open?.def.id === def.id
         ? open.handle.waitingOn?.(game)
         : game.turn;
-      badge = LOCAL ? 'In play'
+      // A game may seat more colours than a person can hold, and then the
+      // turn belongs to the computer. Nobody is being waited on, so the
+      // card says so rather than naming a colour at somebody.
+      if (!SEATS.includes(waiting)) waiting = null;
+      badge = LOCAL || !waiting ? 'In play'
         : waiting === myColor ? 'Your move'
         : `${nameOf(waiting)} to move`;
     }

@@ -11,7 +11,8 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import parchis from './parchis/view.js';
+import jass from './jass/view.js';
 
-export const GAMES = [parchis];
+export const GAMES = [parchis, jass];
 
 export const byId = (id) => GAMES.find((g) => g.id === id) || null;

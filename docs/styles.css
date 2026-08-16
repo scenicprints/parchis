@@ -644,3 +644,367 @@ body {
            display: grid; align-content: center; }
   .controls { flex-wrap: wrap; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SCHIEBER JASS — a green table under the same dark room. The cards are
+   the only bright thing on the screen, which is the point: everything
+   else is furniture around nine pieces of paper.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.jass {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── The slate ───────────────────────────────────────────────────── */
+/* Two totals and what they are heading for. Sits above everything
+   because it is the thing you look up at between tricks. */
+.jslate {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 16px;
+  padding: 2px 4px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.jteam { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.jteam.right { justify-content: flex-end; }
+.jt-n {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-dim);
+  max-width: 86px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jt-s { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
+.jteam.red  .jt-s { color: var(--red);  }
+.jteam.blue .jt-s { color: var(--blue); }
+.jgoal { font-size: 11px; font-weight: 600; color: var(--ink-dim); flex: none; }
+
+/* ── The three seats whose cards you cannot see ──────────────────── */
+
+/* The table and the three fans around it, held together and centred as one
+   group. Left to fill the stage on their own they drift apart and the top
+   fan ends up floating a long way above the table it belongs to. */
+.jboard {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.jmid {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.jseat { display: grid; justify-items: center; gap: 5px; }
+.jseat.top { flex: none; }
+/* The two side seats are pinned to one width so the table between them
+   stays put instead of sliding a few pixels every time a name is longer
+   or somebody plays a card. */
+.jseat.left, .jseat.right { align-content: center; width: 54px; }
+
+.jwho {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink-dim);
+  opacity: .65;
+  transition: opacity .2s;
+  max-width: 96px;
+}
+.jwho span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jseat.active .jwho { opacity: 1; color: var(--pop); }
+.jseat.left .jwho, .jseat.right .jwho { max-width: 60px; font-size: 10.5px; }
+
+/* A fan of backs, tight enough that nine of them still fit beside the
+   table on the narrowest phone. */
+.jfan { display: flex; }
+.jb { flex: none; line-height: 0; }
+.jseat.top .jfan { flex-direction: row; }
+.jseat.top .jb + .jb { margin-left: -19px; }
+.jseat.left .jfan, .jseat.right .jfan { flex-direction: column; }
+.jseat.left .jb + .jb, .jseat.right .jb + .jb { margin-top: -27px; }
+
+/* ── The table ───────────────────────────────────────────────────── */
+
+/* Four cards meet in the middle and take about 170px of it. Filling the
+   whole stage turns the table into a long empty green corridor, so it is
+   given a shape of its own instead and the room left over goes to the fans. */
+.jtable {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1.16;
+  min-height: 180px;
+  max-height: 340px;
+  align-self: center;
+  border-radius: 20px;
+  background:
+    radial-gradient(75% 70% at 50% 42%, #22503C 0%, #17392A 62%, #102A1F 100%);
+  box-shadow: inset 0 0 0 1px rgba(214,169,59,.16),
+              inset 0 12px 40px rgba(0,0,0,.42);
+}
+
+/* What is being played for, tucked into the corner so it never sits under
+   a card. */
+.jcontract {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px 4px 5px;
+  border-radius: 999px;
+  background: rgba(8,14,11,.62);
+  border: 1px solid rgba(214,169,59,.28);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.jcontract .jc-x { color: var(--pop); font-weight: 800; }
+.jarrow { font-size: 15px; font-weight: 900; color: var(--pop); line-height: 1; }
+.jarrow.big { font-size: 24px; }
+
+/* Tricks taken and what they were worth, this hand. Both sides played
+   their cards face up, so this is only saving the addition. */
+.jtally {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-dim);
+}
+.jtally .jw.red  { color: var(--red);  }
+.jtally .jw.blue { color: var(--blue); }
+.jtally .jsep { opacity: .5; font-weight: 600; }
+.jtally .jp {
+  margin-left: 4px;
+  padding-left: 7px;
+  border-left: 1px solid rgba(255,255,255,.14);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* The four cards, laid where the people who played them are sitting. */
+.jtrick { position: absolute; inset: 0; }
+.jplay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  line-height: 0;
+  filter: drop-shadow(0 6px 12px rgba(0,0,0,.45));
+  animation: jland .18s var(--tap) both;
+}
+.jplay.bottom { transform: translate(-50%, -4%)  rotate(2deg);  }
+.jplay.top    { transform: translate(-50%, -96%) rotate(-2deg); }
+.jplay.left   { transform: translate(-98%, -50%) rotate(-5deg); }
+.jplay.right  { transform: translate(-2%,  -50%) rotate(5deg);  }
+
+@keyframes jland { from { opacity: 0; } to { opacity: 1; } }
+
+/* Whichever card is taking the trick wears the gold, so the moment the
+   fourth one lands you can see who won without counting. */
+.jplay.winning .cardface {
+  outline: 2.5px solid var(--pop);
+  outline-offset: -1px;
+  border-radius: 7px;
+}
+
+/* ── The panel ───────────────────────────────────────────────────── */
+
+.jstatus {
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  min-height: 21px;
+  margin-bottom: 8px;
+  letter-spacing: .01em;
+}
+.jstatus.you  { color: var(--pop); text-shadow: 0 0 16px rgba(242,193,78,.35); }
+.jstatus.over { color: var(--ink); font-size: 18px; }
+
+.jlast {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+  min-height: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Your hand ───────────────────────────────────────────────────── */
+/* The width and the overlap are set from JavaScript against the room
+   there actually is, so nine cards fit whatever phone this is instead of
+   running off the side of it. */
+.jhand {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  min-height: 84px;
+}
+/* Between hands there are no cards, and an empty 84px reserved for them
+   leaves a hole under the scoreboard. */
+.jhand:empty { min-height: 0; }
+.jcard {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 0;
+  cursor: pointer;
+  transition: transform .13s var(--tap), opacity .13s;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,.5));
+}
+.jcard.live:active { transform: translateY(-9px); }
+/* A card you may not play sinks and dims rather than vanishing, so you can
+   still see what you are holding. */
+.jcard.dud { transform: translateY(7px); opacity: .46; cursor: default; }
+.jcard.refused { animation: jnope .34s; }
+
+@keyframes jnope {
+  0%, 100% { transform: translateX(0);   }
+  25%      { transform: translateX(-5px); }
+  75%      { transform: translateX(5px);  }
+}
+
+/* ── Naming the contract ─────────────────────────────────────────── */
+
+.jbid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.jbidb {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  padding: 9px 4px 8px;
+  min-height: 74px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: linear-gradient(#171E29, #121822);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: transform .1s, border-color .12s;
+}
+.jbidb:active { transform: scale(.96); border-color: var(--gold); }
+.jb-l { font-size: 11.5px; font-weight: 700; }
+.jb-x { font-size: 11px; font-weight: 800; color: var(--pop); }
+
+.jshove {
+  grid-column: 1 / -1;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--bg-soft);
+  color: var(--ink-dim);
+  font: 700 14px inherit;
+  cursor: pointer;
+}
+.jshove:active { transform: scale(.98); color: var(--ink); }
+
+/* ── What the hand came to ───────────────────────────────────────── */
+
+.jresult {
+  max-height: 48dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 8px;
+}
+.jrhead, .jrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 58px;
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.jrhead {
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.jrow .jr-l { color: var(--ink-dim); }
+.jr-a, .jr-b { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.jrhead .jr-a, .jrhead .jr-b { text-transform: none; letter-spacing: 0; }
+.jrow.strong {
+  border-bottom: 0;
+  font-size: 17px;
+  color: var(--pop);
+}
+.jrow.strong .jr-a, .jrow.strong .jr-b { font-weight: 800; }
+
+.jschneider {
+  padding: 8px 2px 0;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+
+.jnext {
+  width: 100%;
+  height: 48px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(#FFDE85, #F2BC45 50%, #D89E28);
+  color: #3A2B06;
+  font: 800 17px/1 inherit;
+  box-shadow: 0 4px 0 #96700F, 0 9px 20px rgba(0,0,0,.35),
+              inset 0 1px 0 rgba(255,255,255,.6);
+  cursor: pointer;
+}
+.jnext:active { transform: translateY(3px); box-shadow: 0 1px 0 #96700F; }
+
+/* ── This hand, in the menu ──────────────────────────────────────── */
+
+.jlog {
+  max-height: 52dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.jlogline {
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-dim);
+}
+.jlogline:first-child { color: var(--ink); }
+
+/* Short phones: give the table back the room the fans were taking. */
+@media (max-height: 700px) {
+  .jtable { min-height: 150px; }
+  .jseat.top .jb + .jb { margin-left: -21px; }
+  .jbidb { min-height: 64px; }
+  .jhand { min-height: 72px; }
+}
