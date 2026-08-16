@@ -780,10 +780,16 @@ function bestAction(acts) {
 // Draw the new board at once, then hand it to the hub to put on the wire.
 // Firestore's local cache echoes a write back immediately, so this staying
 // optimistic is what makes a tap feel instant.
+//
+// The write itself is fired and not waited on. Firestore has already taken
+// it and will keep trying; waiting for the server to acknowledge it puts
+// the rest of the turn behind a round trip on whatever signal the phone
+// has, and `botTurn` holds `thinking` set for the whole of that, which is
+// the board locking up rather than merely lagging.
 async function commit(next) {
   game = next;
   render();
-  await api.commit(next);
+  Promise.resolve(api.commit(next)).catch(() => {});
 }
 
 // ═══════════════════════════════════════════════════════════════════════

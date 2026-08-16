@@ -20,6 +20,8 @@ Parchís was the whole app; as of the hub overhaul it is the first game in it.
 The URL and documents deliberately still say `parchis` — renaming them would
 have cost a migration and a Firestore rules change for nothing.
 
+Two games so far: **Parchís** and **Schieber Jass**.
+
 ## Decisions already made, do not relitigate
 
 - Installable web app, **not** native. He rejected TestFlight to avoid the
@@ -31,6 +33,15 @@ have cost a migration and a Firestore rules change for nothing.
 - The Parchís board is a **printed white board**: white paper, one ink colour
   ruling every square, solid colour yards. Two earlier attempts failed by
   adjusting overall brightness when the problem was contrast between parts.
+- Jass is **Schieber for four**, him and a computer partner against her and
+  hers. Not one of the two-handed Jass variants. His call, made against the
+  alternative of a heads-up game with no computer in it.
+- **Jass hands ride in the game document** and the screen simply does not
+  draw the other three. This is a decision, not an oversight: the private
+  documents plus a Firestore rules change were on the table and he chose
+  against them. Seeing another hand takes deliberately opening devtools.
+- Jass cards are the **Swiss German pack**: bells, shields, acorns, roses,
+  with Ober, Under and Banner. Not French suits.
 
 ---
 
@@ -50,7 +61,13 @@ docs/
       rules.js          pure engine, no DOM and no network
       board.js          where all 68 squares physically sit
       view.js           draws the board, takes the taps
-test/rules.test.mjs     22 tests over the engine, incl. a 2000 game fuzz run
+    jass/
+      cards.js          the 36 card pack, and how a card is drawn
+      rules.js          pure engine: contracts, tricks, Weis, Stöck, scoring
+      bot.js            the two computer seats, pure and with no randomness
+      view.js           draws the table, takes the taps
+test/rules.test.mjs     22 tests over Parchís, incl. a 2000 game fuzz run
+test/jass.test.mjs      30 tests over Jass, incl. 400 computer-played sessions
 scripts/serve.mjs       dev server on :8099, plus POST /shot/<name>
 scripts/make-icons.mjs  redraws the home screen icons
 firestore.rules         what is actually published
@@ -145,7 +162,22 @@ Use `?room=<name>` to exercise the real thing safely.
 
 **Two clients, for anything about syncing.** `http://localhost:8099` and the
 live site are different origins, so they get different anonymous identities
-and separate caches. That is a working stand-in for two phones.
+and separate caches. That is a working stand-in for two phones. So is
+running the dev server twice on two ports: `8099` and `8111` are different
+origins to Firebase and get an anonymous id each, which lets both sides be
+driven from one script without deploying anything.
+
+**Headless Chrome throttles timers in a background tab**, to once a second
+and then, after a few minutes, to once a minute. Anything driven by
+`setTimeout` looks completely stuck. Two tabs means one of them is always in
+the background, so a two-client test needs
+`--disable-background-timer-throttling --disable-backgrounding-occluded-windows
+--disable-renderer-backgrounding` or it is measuring Chrome and not the app.
+This cost most of an afternoon, and twice looked exactly like a sync bug.
+
+The real phone does the same thing when the screen goes off, which is why no
+game logic may sit behind a timer holding a flag. See the note on the Jass
+scheduler below.
 
 **Deploys.** Bump `?v=` on both links in `index.html` every time, and bump
 `CACHE` in `sw.js` whenever `SHELL` changes. The page is fetched with
@@ -174,31 +206,99 @@ their live game.
 - Board geometry: 68 = 8 lanes × 8 + 4 arm tips. `ENTRY` and `TURN_IN` are
   stated outright rather than derived; the crossing is 63 squares, not 68.
 
+### Jass in particular
+
+- **Seating order is `red, blue, green, yellow` and that is why it works.**
+  Partners sit two apart, so the partnerships are red+green and blue+yellow,
+  and the two seats a person can take end up as opponents. Reorder that list
+  and Kev and Ado become partners. Parchís uses a different order for its
+  own reasons; the two are not interchangeable.
+- A partnership is **named for the human seat in it**, so `winner` is
+  already the `'red'` or `'blue'` the hub records a point against.
+- **`iAct(seat)` decides which phone moves the game on**, for the computer's
+  turns and for sweeping up a finished trick alike. A trick is swept by the
+  device of whoever won it; the computer is driven by the seat earliest in
+  turn order. Two phones both doing it writes the same move twice and one of
+  them lands on top of a turn that has already moved past it.
+- **`schedule()` / `step()` must stay one timer at a time, and must not hold
+  a flag.** The first version was a loop that set `busy = true`, awaited a
+  string of sleeps while the computer played, and cleared it at the end.
+  Anything that stopped that loop finishing left `busy` set, and `busy`
+  blocked every tap: the game froze with no way out. A backgrounded phone
+  does exactly that, because its timers get clamped to once a minute, so
+  picking the phone up mid-hand would have found the cards dead. Now one
+  step is scheduled at a time, stamped with `game.rev`; if it fires against
+  a board that has moved on, it drops itself and looks again. Nothing is
+  held open, so nothing can be left open. Do not reintroduce a flag.
+- `commit()` **fires the Firestore write without awaiting it**. Firestore's
+  own cache has already taken it and echoes it straight back, and awaiting
+  it puts the whole turn machine behind a server round trip on whatever
+  signal the phone has. Parchís now does the same, for the same reason: its
+  `botTurn` held `thinking` set for the length of the write, and `thinking`
+  locks the board.
+- A finished trick **stays on the table** in its own `gather` phase rather
+  than being swept the instant the fourth card lands. Without that the other
+  phone gets the next board and never sees the trick it just lost.
+- **A card's rank and suit both live in the strip down its left edge.** Nine
+  cards on a phone overlap to about 36 of their 58 pixels, so anything in
+  the far corner is under the next card. Putting the suit top right, the way
+  a French pack does, made a hand read as nine bare letters.
+- `weisIn` counts sequences down the pack's own order, **A K O U B 9 8 7 6**,
+  whatever the contract is doing to the ranking. In undenufe the six beats
+  the seven in a trick and still sits at the bottom of a run.
+- The `dealt` copy of the hands is kept alongside the live ones because Weis
+  and Stöck are about what you were dealt, not what you are still holding.
+
 ## Testing
 
 ```bash
-npm test                       # 22 engine tests, incl. 2000 fuzzed games
-node scripts/serve.mjs         # dev server on :8099
+npm test                       # both engines: 52 tests
+npm run test:jass              # Jass only, about two minutes
+node scripts/serve.mjs 8099    # dev server, port optional
 ```
 
-`http://localhost:8099/?local=1` plays both sides with no network.
-The fuzz test is what catches turn-machine deadlocks; run it after any rules
-change. It takes ~10s idle, much longer if browser drivers are running.
+`http://localhost:8099/?local=1` plays every side with no network.
+
+Both fuzz runs are what catch turn-machine deadlocks; run them after any
+rules change. Parchís plays 2000 games, Jass plays 400 whole sessions with
+the computer holding all four hands, checking after every hand that the pack
+still comes to 157 and that the slate moved by what the hand said. Together
+they take five to ten minutes on his laptop, much longer with browser
+drivers running.
+
+`node --test test/` does **not** work here: it reads the directory as a file
+name and fails with MODULE_NOT_FOUND. The script names both files outright.
 
 ---
 
 ## Open
 
-- **Card games need hidden information solved first.** Any signed-in client
-  can read the whole game document, so a hand would be visible to the other
-  player. That is a rules and data-shape problem, not a UI one.
+- **Hidden information is decided, not solved.** All four Jass hands sit in
+  `parchis/game` and the screen draws only your own. Anybody who opens
+  devtools can read the other three. The alternative was a hand per seat in
+  its own document with a Firestore rules change to match, and he chose
+  against it. Do not "fix" this without asking; and if it ever does get
+  fixed, note that a computer partner's cards have to be readable by
+  whichever phone is driving it, so private documents alone would not have
+  made a four-handed game airtight either.
+- **The Jass computer is competent, not good.** It counts what has been
+  played, knows when its partner is safe and feeds them points, and picks a
+  contract by what the hand projects times the multiplier. It does not plan
+  a hand out. Hard beats Easy in 196 of 200 matches, averaging 1213 to 538,
+  so the heuristics are doing real work rather than shuffling legal cards;
+  that says nothing about whether it is any good against a person. If he
+  says the partner played something stupid, that is a real report about
+  `bot.js` and not about the rules, and it wants the position it happened
+  in, not a general tune-up.
 - **Push notifications** need Cloud Functions, which needs the **Blaze** plan
   on a project shared with his foos data. His call, still undecided. The
   in-app "Your move" badge is as far as it goes without it.
-- **Four players with computers is lightly tested.** He plays it; it has never
-  been exercised properly.
-- The home screen icon is still a Parchís board and the app is now called
-  "Games". Cosmetic, and only changes on a reinstall.
+- **Four players with computers is lightly tested.** He plays it. It has now
+  been driven through a thousand presses in a real browser without locking
+  up, which is not the same as anybody enjoying it.
+- The home screen icon is three fanned cards with a red and a blue token.
+  It **only changes when the app is added to the home screen again**, so a
+  phone that already has the old board tile keeps it until it is reinstalled.
 
 ## How he works
 
