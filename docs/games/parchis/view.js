@@ -1,12 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════════
-//  PARCHÍS — the screen and the wire.
+//  PARCHÍS — the screen.
 //
-//  The rules live in rules.js and know nothing about any of this. Here we
-//  draw the board, take taps, and keep one document in Firestore in step
-//  between two phones. Only the player whose turn it is ever writes.
+//  The rules live in rules.js and know nothing about any of this. This file
+//  draws the board and takes the taps, and knows nothing about Firestore
+//  either. The hub mounts it, hands it a board to show and one way to hand
+//  a new board back, and deals with the wire itself.
 //
-//  Add ?local=1 to the address to play both sides on one device, with no
-//  network at all. That is how the board gets tested.
+//  Everything the hub supplies arrives through `api` and is mirrored onto
+//  the plain variables below, so the drawing code reads the way it always
+//  did instead of reaching through an object on every line.
 // ═══════════════════════════════════════════════════════════════════════
 
 import {
@@ -16,15 +18,16 @@ import {
 } from './rules.js';
 
 import { RING, COLUMN, NEST_BOX, nestSlots, homeSlot, GRID } from './board.js';
-
-const LOCAL = new URLSearchParams(location.search).has('local');
+import { sheet, addRow as add } from '../../ui.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 //  What the screen is currently showing
 // ═══════════════════════════════════════════════════════════════════════
 
+let api = null;        // the hub's side of the conversation
+let LOCAL = false;     // both sides on this device, with no network
 let uid = null;
-let table = null;      // seats and the lifetime score
+let table = null;      // seats and the record
 let game = null;       // the live board
 let myColor = null;
 let sel = null;        // the pawn the player has tapped
@@ -34,9 +37,24 @@ let walking = null;    // id of the pawn currently crossing the board
 
 const BOT_LEVELS = ['easy', 'hard'];
 const BOT_LABEL = { easy: 'Easy', hard: 'Hard' };
-let botSkill = BOT_LEVELS.includes(localStorage.getItem('parchis-skill'))
-  ? localStorage.getItem('parchis-skill')
-  : 'hard';
+
+// The house rules for this game. The hub keeps them, so both phones agree.
+// They used to sit in this device's localStorage, which meant two phones
+// could hold different ideas of the table until somebody dealt again.
+// A board already on the table speaks for itself: it knows how many are
+// playing and how many of those are the computer. That is what the menu
+// shows and what the next deal copies, until somebody says otherwise. It
+// also carries the old localStorage settings across without a migration,
+// because the game in progress was already dealt to them.
+const DEFAULTS = { players: 2, bots: 0, skill: 'hard' };
+
+const houseOf = (state) => ({
+  ...DEFAULTS,
+  ...(state ? { players: sidesOf(state).length, bots: (state.bots || []).length } : {}),
+  ...(api?.settings() || {}),
+});
+
+const house = () => houseOf(game);
 
 // How many are playing, and how many of those are the computer. A game can
 // have four players but never four people: red and blue are the only seats a
@@ -486,15 +504,10 @@ function renderHeader() {
   }
   bar.classList.toggle('four', roster.length > 2);
 
-  const score = $('score');
-  if (roster.length > 2) {
-    score.classList.add('hidden');
-  } else {
-    score.classList.remove('hidden');
-    const me = seatColor();
-    const sc = table?.score || {};
-    score.textContent = `${sc[me] || 0} – ${sc[other(me)] || 0}`;
-  }
+  // The record in the corner belongs to the hub, and it is the whole
+  // table's, not this game's. Four names will not fit beside it, so it
+  // steps aside once the table is more than two-handed.
+  $('score').classList.toggle('hidden', roster.length > 2);
 }
 
 function renderPanel(mine) {
@@ -686,7 +699,7 @@ async function walkPawn(id, color, path) {
 }
 
 async function doRoll() {
-  if (game.winner) return startGame();
+  if (game.winner) return api.deal();
   if (thinking || walking) return;
   if (!iPlay(game.turn)) return;
   sel = null;
@@ -732,7 +745,7 @@ async function botTurn() {
       if (game.phase === 'roll') { await commit(applyRoll(game, rollDice())); continue; }
       const acts = distinctActions(legalActions(game));
       if (!acts.length) break;
-      const pick = botSkill === 'hard'
+      const pick = house().skill === 'hard'
         ? bestAction(acts)
         : acts[Math.floor(Math.random() * acts.length)];
       await applyMove(pick);
@@ -764,45 +777,25 @@ function bestAction(acts) {
   return best;
 }
 
-// Push a new state everywhere. Firestore's local cache echoes the write
-// back immediately, so the board moves before the network answers.
+// Draw the new board at once, then hand it to the hub to put on the wire.
+// Firestore's local cache echoes a write back immediately, so this staying
+// optimistic is what makes a tap feel instant.
 async function commit(next) {
   game = next;
   render();
-  if (LOCAL) return;
-  try {
-    await save(next);
-  } catch (err) {
-    fatal(err);
-  }
+  await api.commit(next);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 //  The menu
 // ═══════════════════════════════════════════════════════════════════════
 
-function sheet(build) {
-  const root = $('sheet-root');
-  root.innerHTML = '';
-  const wrap = document.createElement('div');
-  wrap.className = 'sheet';
-  const inner = document.createElement('div');
-  inner.className = 'inner';
-  inner.innerHTML = '<div class="grab"></div>';
-  wrap.appendChild(inner);
-  wrap.addEventListener('click', (e) => { if (e.target === wrap) root.innerHTML = ''; });
-  build(inner, () => { root.innerHTML = ''; });
-  root.appendChild(wrap);
-}
-
+// Only what belongs to this game. Anything true of the whole hub — who you
+// are, the record, leaving for another game — is the hub's menu, not this
+// one, and sits above this on the same sheet.
 function openMenu() {
   sheet((inner, close) => {
-    const sc = table?.score || { red: 0, blue: 0 };
-    if (sidesOf(game || {}).length === 2) {
-      inner.insertAdjacentHTML('beforeend', `
-        <div class="row"><span>Games won</span>
-          <span class="val">Red ${sc.red || 0} · Blue ${sc.blue || 0}</span></div>`);
-    }
+    api.hubRows(inner, close);
 
     add(inner, 'How it plays', '', () => { close(); openRules(); });
 
@@ -810,45 +803,18 @@ function openMenu() {
     add(inner, 'Players', `${players()} · ${n} computer${n === 1 ? '' : 's'}`,
       () => { close(); openPlayers(); });
 
-    add(inner, 'Computer skill', BOT_LABEL[botSkill], () => {
-      botSkill = BOT_LEVELS[(BOT_LEVELS.indexOf(botSkill) + 1) % BOT_LEVELS.length];
-      localStorage.setItem('parchis-skill', botSkill);
+    add(inner, 'Computer skill', BOT_LABEL[house().skill], async () => {
+      const next = BOT_LEVELS[(BOT_LEVELS.indexOf(house().skill) + 1) % BOT_LEVELS.length];
       close();
+      await api.setSettings({ skill: next });
     });
-
-    if (LOCAL) add(inner, 'Back to the real game', '', () => { location.href = location.pathname; });
-    else add(inner, 'Play on this device', '', () => { location.href = `${location.pathname}?local=1`; });
 
     add(inner, 'New game', '', async () => {
       close();
       if (game && !game.winner && !confirm('Abandon the game in progress?')) return;
-      await startGame();
+      await api.deal();
     });
-
-    if (!LOCAL) {
-      add(inner, 'Change my name', table?.seats?.[myColor]?.name || '', async () => {
-        const name = prompt('Your name', table?.seats?.[myColor]?.name || '');
-        if (name && name.trim()) { await claimSeat(myColor, name.trim()); close(); }
-      });
-      add(inner, 'Give up this seat', '', async () => {
-        if (!confirm('Free up your side so it can be taken again?')) return;
-        await releaseSeat();
-        close();
-        location.reload();
-      }, true);
-    }
   });
-}
-
-function add(parent, label, val, fn, danger) {
-  const b = document.createElement('button');
-  b.className = `row${danger ? ' danger' : ''}`;
-  b.innerHTML = `<span></span><span class="val"></span>`;
-  b.children[0].textContent = label;
-  b.children[1].textContent = val;
-  b.addEventListener('click', fn);
-  parent.appendChild(b);
-  return b;
 }
 
 // How many are at the table, and how many of those are the computer. Red and
@@ -857,11 +823,10 @@ function add(parent, label, val, fn, danger) {
 function openPlayers() {
   sheet((inner, close) => {
     const apply = async (total, bots) => {
-      localStorage.setItem('parchis-players', String(total));
-      localStorage.setItem('parchis-bots', String(bots));
       close();
       if (game && !game.winner && !confirm('Start a new game with these players?')) return;
-      await startGame();
+      await api.setSettings({ players: total, bots });
+      await api.deal();
     };
 
     inner.insertAdjacentHTML('beforeend',
@@ -912,15 +877,10 @@ function openRules() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Firestore
+//  House rules
 // ═══════════════════════════════════════════════════════════════════════
 
-let db, TABLE, GAME, save, claimSeat, releaseSeat, recordWin;
-let gameLoaded = false;
-
-// The table settings live on this device until a new game bakes them into
-// the game itself, which is how the other phone finds out about them.
-const players = () => (Number(localStorage.getItem('parchis-players')) === 4 ? 4 : 2);
+const players = () => (house().players === 4 ? 4 : 2);
 
 // Red and blue are the only seats a person can take, so a four-handed game
 // is always at least two computers. A two-handed one may be none.
@@ -928,267 +888,100 @@ const leastBots = (total) => (total === 4 ? 2 : 0);
 
 const botCount = () => {
   const total = players();
-  const n = Number(localStorage.getItem('parchis-bots'));
+  const n = Number(house().bots);
   const floor = leastBots(total);
   if (!Number.isFinite(n)) return Math.max(floor, LOCAL ? 1 : 0);
   return Math.max(floor, Math.min(total - 1, n));
 };
 
-// The loser opens the next one. The very first game goes to red.
-async function startGame() {
-  const total = players();
-  const first = game?.winner && sidesOf(game).includes(game.winner)
-    ? game.winner            // beaten players do not get to open the next one
+// ═══════════════════════════════════════════════════════════════════════
+//  The hub's handle on this game
+// ═══════════════════════════════════════════════════════════════════════
+
+// A fresh board, dealt to the house rules. The hub calls this; it never
+// builds a game state itself, because only the game knows what one is.
+function deal(prev) {
+  // Read the table off whichever board is around, because the hub can deal
+  // from the lobby with nothing mounted and no `game` to look at.
+  const h = houseOf(prev || game);
+  const total = h.players === 4 ? 4 : 2;
+  const floor = leastBots(total);
+  const bots = Math.max(floor, Math.min(total - 1, Number(h.bots) || 0));
+
+  const first = prev?.winner && sidesOf(prev).includes(prev.winner)
+    ? prev.winner            // beaten players do not get to open the next one
     : 'red';
-  const fresh = newGame({
-    first: total === 2 && game?.winner ? other(game.winner) : first,
+  return newGame({
+    first: total === 2 && prev?.winner ? other(prev.winner) : first,
     sides: rosterFor(total),
-    bots: botsFor(total, botCount()),
+    bots: botsFor(total, bots),
   });
-  fresh.id = `${Date.now()}`;
+}
+
+// Draw this game into the screen the hub has already put on the page, and
+// hand back the two things the hub needs: somewhere to push new boards, and
+// a way to take it all down again when it leaves for another game.
+function mount(handle) {
+  api = handle;
+  LOCAL = handle.local;
+  uid = handle.uid;
   sel = null;
-  if (LOCAL) { game = fresh; render(); await botTurn(); return; }
-  await save(fresh);
-}
+  lastRoll = 0;
+  thinking = false;
+  walking = null;
+  builtFor = '';
 
-async function connect() {
-  const [{ initializeApp }, authMod, fs] = await Promise.all([
-    import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js'),
-    import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js'),
-    import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js'),
-  ]);
+  // The hub supplies an empty stage and an empty panel. What goes in them
+  // is this game's business, which is what lets the next game put a hand of
+  // cards there instead of a board and two dice.
+  $('game-stage').innerHTML =
+    '<svg id="board" viewBox="-0.6 -0.6 20.2 20.2" xmlns="http://www.w3.org/2000/svg"'
+    + ' aria-label="Parchís board"></svg>';
 
-  // The same project the foos league already runs in. Parchís just adds
-  // its own two documents alongside it.
-  const app = initializeApp({
-    apiKey: 'AIzaSyC2bOtXmNLzwJy3QsDkk1tQRBD_wMdhzcM',
-    authDomain: 'foos-6ecf3.firebaseapp.com',
-    projectId: 'foos-6ecf3',
-    storageBucket: 'foos-6ecf3.firebasestorage.app',
-    messagingSenderId: '730132593509',
-    appId: '1:730132593509:web:6379dde4e6a92be09d7f8c',
-  });
+  $('game-panel').innerHTML = `
+    <div class="status" id="status">Connecting</div>
+    <div class="controls">
+      <div class="dicebar" id="dicebar"></div>
+      <button class="roll" id="btn-roll" disabled>Roll</button>
+    </div>
+    <div class="lastline" id="lastline"></div>`;
 
-  const auth = authMod.getAuth(app);
-  db = fs.initializeFirestore(app, {
-    localCache: fs.persistentLocalCache({ tabManager: fs.persistentSingleTabManager() }),
-  });
-
-  // ?room=<name> plays somewhere else entirely, so seats and boards can be
-  // broken on purpose without touching the game the two of you are in.
-  const room = new URLSearchParams(location.search).get('room');
-  const suffix = room ? `-${room.replace(/[^a-z0-9-]/gi, '')}` : '';
-  TABLE = fs.doc(db, 'parchis', `table${suffix}`);
-  GAME = fs.doc(db, 'parchis', `game${suffix}`);
-
-  save = (state) => fs.setDoc(GAME, state);
-
-  // A seat is held by a browser's anonymous id, and that id does not survive
-  // a reinstall or a switch of browser. So a held seat can always be taken,
-  // with the screen asking first. Refusing was what left a phone locked out
-  // of a game it had been playing an hour earlier, with both sides spoken
-  // for and nothing on the page able to release either.
-  claimSeat = (color, name) => fs.runTransaction(db, async (tx) => {
-    const snap = await tx.get(TABLE);
-    const t = snap.exists() ? snap.data() : { seats: {}, score: { red: 0, blue: 0 } };
-    const seats = { ...(t.seats || {}) };
-    // One person cannot hold both sides. Null rather than delete, because a
-    // merged write leaves a removed key exactly where it was.
-    const foe = other(color);
-    if (seats[foe]?.uid === uid) seats[foe] = null;
-    seats[color] = { uid, name };
-    tx.set(TABLE, { ...t, seats }, { merge: true });
-  });
-
-  releaseSeat = () => fs.runTransaction(db, async (tx) => {
-    const snap = await tx.get(TABLE);
-    if (!snap.exists()) return;
-    const t = snap.data();
-    if (t.seats?.[myColor]?.uid !== uid) return;
-    tx.set(TABLE, { ...t, seats: { ...t.seats, [myColor]: null } });
-  });
-
-  recordWin = (id, winner) => fs.runTransaction(db, async (tx) => {
-    const snap = await tx.get(TABLE);
-    const t = snap.exists() ? snap.data() : {};
-    if (t.lastScored === id) return;            // the other phone got here first
-    const score = { red: 0, blue: 0, ...(t.score || {}) };
-    score[winner] = (score[winner] || 0) + 1;
-    tx.set(TABLE, { lastScored: id, score }, { merge: true });
-  });
-
-  await authMod.signInAnonymously(auth);
-  uid = auth.currentUser.uid;
-
-  fs.onSnapshot(TABLE, (snap) => {
-    table = snap.exists() ? snap.data() : { seats: {}, score: { red: 0, blue: 0 } };
-    settleSeat();
-  }, fatal);
-
-  fs.onSnapshot(GAME, (snap) => {
-    gameLoaded = true;
-    if (!snap.exists()) {
-      if (myColor) startGame();
-      return;
-    }
-    game = snap.data();
-    sel = null;
-
-    // The board changed shape under this game. Its pawn positions now point
-    // at different squares, so there is nothing to salvage — deal again.
-    if (game.board !== BOARD_REV) {
-      booted();
-      if (myColor) { startGame(); return; }
-    }
-
-    booted();
-    render();
-    // A compelled move should not wait on a tap here either, and the seat
-    // driving the computer picks up its turn from the same signal. Both are
-    // guarded inside, so the other phone stays put.
-    settleTurn();
-    if (game.winner && game.id) recordWin(game.id, game.winner).catch(() => {});
-  }, fatal);
-}
-
-// Work out which side this device owns, and ask if it owns neither.
-function settleSeat() {
-  const seats = table?.seats || {};
-  const found = SIDES.find((c) => seats[c]?.uid === uid);
-
-  if (found) {
-    myColor = found;
-    $('seatpick').classList.add('hidden');
-    // Claiming a seat on a fresh table is what opens the first game.
-    if (!game && gameLoaded) { startGame(); return; }
-    if (game) { booted(); render(); }
-    return;
-  }
-
-  myColor = null;
-  for (const c of SIDES) {
-    const held = seats[c];
-    const btn = document.querySelector(`.seatbtn.${c}`);
-    $(`who-${c}`).textContent = held?.name ? held.name : 'Open';
-    // Never disabled. A taken seat still has to be pressable, or a phone
-    // that has lost its old identity has no way back into its own game.
-    btn.disabled = false;
-    btn.classList.toggle('taken', Boolean(held?.uid));
-  }
-  $('seatpick').classList.remove('hidden');
-  booted();
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  Start up
-// ═══════════════════════════════════════════════════════════════════════
-
-function booted() {
-  const b = $('boot');
-  // Called again every time the seat or the game settles, and by then this
-  // element has usually been removed. Reading through the null threw before
-  // render() could run, which is what left a phone on "Connecting" with an
-  // empty board the moment it took a seat.
-  if (!b || b.classList.contains('gone')) return;
-  b.classList.add('gone');
-  $('app').classList.remove('hidden');
-  setTimeout(() => b.remove(), 400);
-}
-
-function fatal(err) {
-  const denied = String(err?.code || err?.message || '').includes('permission-denied');
-  const box = $('fatal');
-  box.classList.remove('hidden');
-  box.innerHTML = denied
-    ? `<h2>Firestore is turning us away</h2>
-       <p>The database rules do not allow the <b>parchis</b> documents yet.
-       Paste the block below into the Firebase console under
-       Firestore Database → Rules, publish it, then reopen this page.</p>
-       <code>match /parchis/{doc} {
-  allow read, write: if request.auth != null;
-}</code>`
-    : `<h2>Something went wrong</h2><code>${String(err?.message || err)}</code>`;
-}
-
-function wire() {
   $('btn-roll').addEventListener('click', doRoll);
   $('btn-menu').addEventListener('click', openMenu);
 
-  for (const btn of document.querySelectorAll('.seatbtn')) {
-    btn.addEventListener('click', async () => {
-      const color = btn.dataset.color;
-      const held = table?.seats?.[color];
-      // Coming back to a seat you already had, the name on it is the obvious
-      // one to keep, so an empty box is not a reason to refuse.
-      const name = $('seat-name').value.trim() || held?.name || '';
-      if (!name) { $('seat-err').textContent = 'Put your name in first.'; return; }
-
-      if (held?.uid && held.uid !== uid &&
-          !confirm(`${held.name} is on this side. Take it over?`)) return;
-
-      $('seat-err').textContent = '';
-      btn.classList.add('busy');
-      try {
-        await claimSeat(color, name);
-      } catch (err) {
-        $('seat-err').textContent = err?.message || String(err);
-      } finally {
-        btn.classList.remove('busy');
-      }
-    });
-  }
+  return {
+    // The hub calls this with every board that arrives, its own and the
+    // other phone's alike.
+    update(state, ctx) {
+      table = ctx.table;
+      myColor = ctx.me;
+      game = state;
+      const roster = [...sidesOf(state)].join(',');
+      if (roster !== builtFor) buildBoard(sidesOf(state));
+      render();
+      settleTurn();
+    },
+    // Whose move it is, in words the lobby can show without knowing the
+    // first thing about Parchís.
+    waitingOn(state) {
+      if (!state || state.winner) return null;
+      return state.turn;
+    },
+    destroy() {
+      api = null;
+      game = null;
+      pawnNodes = {};
+      builtFor = '';
+    },
+  };
 }
 
-async function main() {
-  buildBoard(rosterFor(players()));
-  wire();
-
-  if (LOCAL) {
-    myColor = 'red';
-    table = { seats: {}, score: {} };
-    game = newGame({
-      sides: rosterFor(players()),
-      bots: botsFor(players(), botCount()),
-    });
-    game.id = 'local';
-    booted();
-    render();
-    await botTurn();
-    return;
-  }
-
-  try {
-    await connect();
-  } catch (err) {
-    fatal(err);
-  }
-}
-
-main();
-
-// ── Picking up a new version ─────────────────────────────────────────
-// The worker already running is the one that serves the page you are
-// looking at. A new worker installs quietly behind it and only takes over
-// afterwards, so without this every open showed the release before last and
-// the phone sat permanently one version behind.
-//
-// When a new worker does take over, the page it is holding is already stale,
-// so reload it. Not on the very first install: there was no old worker then,
-// and nothing on screen is out of date.
-if ('serviceWorker' in navigator) {
-  const hadWorker = !!navigator.serviceWorker.controller;
-  let refreshing = false;
-
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!hadWorker || refreshing) return;
-    refreshing = true;
-    location.reload();
-  });
-
-  addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then((reg) => {
-      // Ask outright rather than waiting for the browser to get round to it.
-      reg.update().catch(() => {});
-    }).catch(() => {});
-  });
-}
+export default {
+  id: 'parchis',
+  title: 'Parchís',
+  blurb: 'Four pawns each, two dice, and a long way round.',
+  colours: ['red', 'blue'],
+  boardRev: BOARD_REV,
+  deal,
+  mount,
+};

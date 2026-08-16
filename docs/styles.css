@@ -57,11 +57,17 @@ body {
 /* ── Frame ───────────────────────────────────────────────────────── */
 
 #app {
-  display: flex;
-  flex-direction: column;
   height: 100dvh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* The lobby and whichever game is open are both full-height columns. Only
+   one is ever on the page at a time. */
+.screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .bar {
@@ -69,7 +75,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 46px 10px 14px;
+  padding: 10px 46px 10px 46px;
   border-bottom: 1px solid rgba(30,38,50,.8);
   flex: none;
 }
@@ -130,9 +136,10 @@ body {
   flex: none;
 }
 
-.menub {
+/* Back on the left, menu on the right, both out of the way of the names. */
+.iconb {
   position: absolute;
-  right: 8px; top: 50%;
+  top: 50%;
   transform: translateY(-50%);
   width: 34px; height: 34px;
   display: grid; place-items: center;
@@ -141,7 +148,95 @@ body {
   color: var(--ink-dim);
   cursor: pointer;
 }
-.menub:active { background: var(--bg-soft); }
+.iconb:active { background: var(--bg-soft); }
+#btn-back { left: 8px; }
+#btn-menu { right: 8px; }
+
+/* ── The lobby ────────────────────────────────────────────────────── */
+
+.hubtitle {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  flex: none;
+}
+/* Shrinks and trails off rather than shoving the bar wider than the phone,
+   which took the whole page with it and cut every card off at the edge. */
+.hubrec {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#screen-lobby .bar { padding: 12px 18px; }
+
+.lobby {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 14px calc(20px + env(safe-area-inset-bottom));
+}
+
+.gamelist { display: grid; gap: 12px; max-width: 560px; margin: 0 auto; }
+
+.gamecard {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 16px 16px 14px;
+  text-align: left;
+  border: 1px solid rgba(40,50,64,.9);
+  border-radius: 16px;
+  background: linear-gradient(#161D27, #121821);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: transform .12s, border-color .12s;
+}
+.gamecard:active { transform: scale(.985); }
+/* A game already on the table gets the gold edge, so the one thing you are
+   most likely to want is the one thing that stands out. */
+.gamecard.live { border-color: rgba(242,193,78,.55); }
+
+.gamecard .gt { font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+.gamecard .gb { font-size: 13.5px; color: var(--ink-dim); }
+.gamecard .gmeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+.gamecard .grec {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+.gamecard .gbadge { font-size: 12px; font-weight: 800; color: var(--ink-dim); }
+.gamecard .gbadge.on {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+}
+.gamecard .gbadge.yours {
+  background: linear-gradient(#F5CC63, #D8A32F);
+  color: #3A2B06;
+}
+
+.soon {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+  opacity: .7;
+  padding: 10px 0 4px;
+}
 
 /* ── Board ───────────────────────────────────────────────────────── */
 

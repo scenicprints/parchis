@@ -6,9 +6,9 @@ import {
   RING_LEN, COL_LEN, LAP_LEN, ROUTE_LEN, NEST, COL_BASE, HOME,
   ENTRY, TURN_IN, SAFE, newGame, walk, progress,
   legalActions, applyAction, applyRoll, isBarrier, mostAdvanced,
-} from '../docs/rules.js';
+} from '../docs/games/parchis/rules.js';
 
-import { RING, COLUMN, verifyGeometry, TIPS } from '../docs/board.js';
+import { RING, COLUMN, verifyGeometry, TIPS } from '../docs/games/parchis/board.js';
 
 // ── A helper that puts the board exactly where a test needs it ────────
 function board({ red = [NEST, NEST, NEST, NEST], blue = [NEST, NEST, NEST, NEST],

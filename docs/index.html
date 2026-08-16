@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-  <title>Parchís</title>
-  <meta name="description" content="Parchís, two players, one board, from anywhere.">
+  <title>Games</title>
+  <meta name="description" content="Two players, a handful of games, from anywhere.">
 
   <!-- Runs full-screen with no browser bars once it is added to a home screen -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Parchís">
-  <meta name="theme-color" content="#0E1116">
+  <meta name="apple-mobile-web-app-title" content="Games">
+  <meta name="theme-color" content="#0B0F15">
   <!-- Chrome on Android will algorithmically darken any page it decides is
        a light one, which turned the printed white board into a near-black
        negative on a real phone. Declaring a scheme says the page does its
@@ -22,43 +22,34 @@
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <!-- ?v= is bumped on every deploy so phones never run a stale copy -->
-  <link rel="stylesheet" href="styles.css?v=15">
+  <link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
 
 <div id="app" class="hidden">
 
-  <header class="bar">
-    <!-- One chip per colour in the game, built from the roster, so the same
-         bar serves a two-handed game and a four-handed one. -->
-    <div class="seatbar" id="seatbar"></div>
-    <div class="score" id="score">0 – 0</div>
-    <button class="menub" id="btn-menu" aria-label="Menu">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-      </svg>
-    </button>
-  </header>
-
-  <div class="stage">
-    <svg id="board" viewBox="0 0 19 19" xmlns="http://www.w3.org/2000/svg" aria-label="Parchís board"></svg>
+  <!-- ───── The lobby ───── -->
+  <div id="screen-lobby" class="screen">
+    <header class="bar">
+      <div class="hubtitle">Games</div>
+      <div class="hubrec" id="hub-record">—</div>
+    </header>
+    <div class="lobby">
+      <div class="gamelist" id="gamelist"></div>
+    </div>
   </div>
 
-  <footer class="panel">
-    <div class="status" id="status">Connecting</div>
-    <div class="controls">
-      <div class="dicebar" id="dicebar"></div>
-      <button class="roll" id="btn-roll" disabled>Roll</button>
-    </div>
-    <div class="lastline" id="lastline"></div>
-  </footer>
+  <!-- ───── A game ─────
+       Filled in by the hub when one is opened, and emptied when it leaves,
+       so nothing from the last game is still wired to a button in this one. -->
+  <div id="screen-game" class="screen hidden"></div>
 
 </div>
 
 <!-- ───── First run: pick a seat ───── -->
 <div id="seatpick" class="overlay hidden">
   <div class="card">
-    <h1>Parchís</h1>
+    <h1>Games</h1>
     <p class="sub">Take a side. If your name is already on one, tap it to get back in.</p>
     <label class="field">
       <span>Your name</span>
@@ -82,9 +73,9 @@
 
 <div id="sheet-root"></div>
 
-<div id="boot"><div class="wm">Parchís</div></div>
+<div id="boot"><div class="wm">Games</div></div>
 <div id="fatal" class="hidden"></div>
 
-<script type="module" src="app.js?v=15"></script>
+<script type="module" src="hub.js?v=16"></script>
 </body>
 </html>

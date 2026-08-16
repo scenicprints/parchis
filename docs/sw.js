@@ -2,14 +2,17 @@
 // no signal. Only our own files are cached; Firebase always goes to the
 // network, and Firestore does its own offline work underneath us.
 
-const CACHE = 'parchis-v3';
+const CACHE = 'parchis-v4';
 const SHELL = [
   './',
   'index.html',
   'styles.css',
-  'app.js',
-  'rules.js',
-  'board.js',
+  'hub.js',
+  'ui.js',
+  'games/index.js',
+  'games/parchis/view.js',
+  'games/parchis/rules.js',
+  'games/parchis/board.js',
   'manifest.webmanifest',
   'icon-180.png',
   'icon-192.png',
