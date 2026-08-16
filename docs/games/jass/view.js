@@ -14,7 +14,7 @@
 import {
   ORDER, TEAM, NAMES, CONTRACTS, SIDES, BOARD_REV,
   nextSeat, partnerOf, otherTeam, contractLabel,
-  legalPlays, canPlay, trickLeader, cardStrength, trumpSuit, pointsOf,
+  legalPlays, canPlay, trickLeader, cardStrength, trumpSuit, isTrump, pointsOf,
   newGame, dealHand, gather, apply, STOECK, MATCH_BONUS,
 } from './rules.js';
 
@@ -284,9 +284,46 @@ function renderPanel() {
     status.textContent = `${nameOf(game.turn)} to play`;
   }
 
+  renderTrump();
   renderHand();
   const last = game.log?.[game.log.length - 1];
   $('j-last').textContent = game.phase === 'hand' || game.phase === 'over' ? '' : (last?.t || '');
+}
+
+// ── What is trumps ───────────────────────────────────────────────────
+//
+// Sat right on top of your own cards, because that is where you are
+// looking when you have to choose one. It was a small badge in the corner
+// of the table naming a suit, which is no use at all until you already
+// know which drawing "bells" means. So this shows the sign at a size you
+// can read, and the trumps in your hand are marked underneath as well.
+//
+// With no trump the same bar has more work to do, not less: obenabe and
+// undenufe differ only in which end of the pack wins, and reading that
+// backwards loses the hand.
+function renderTrump() {
+  const el = $('j-trump');
+  if (!el) return;
+  const c = game.contract;
+  if (!c || game.phase === 'hand' || game.phase === 'over') {
+    el.className = 'jtrump hidden';
+    el.innerHTML = '';
+    return;
+  }
+
+  const t = trumpSuit(c);
+  el.className = 'jtrump';
+  el.innerHTML = `${t === null
+    ? `<span class="jarrow big">${c.kind === 'top' ? '↑' : '↓'}</span>`
+    : suitMark(SUITS[t], 30)}
+    <span class="jt-lab"><b></b><i></i></span>
+    <span class="jt-x">×${c.factor}</span>`;
+  el.querySelector('b').textContent = t === null
+    ? (c.kind === 'top' ? 'Obenabe' : 'Undenufe')
+    : SUIT_NAME[SUITS[t]];
+  el.querySelector('i').textContent = t === null
+    ? (c.kind === 'top' ? 'no trump, Ass high' : 'no trump, six high')
+    : 'are trumps';
 }
 
 // ── Your hand ────────────────────────────────────────────────────────
@@ -325,6 +362,9 @@ function renderHand() {
   cards.forEach((card, i) => {
     const b = document.createElement('button');
     b.className = 'jcard';
+    // Gold along the bottom edge, which is the one part of a card in a fan
+    // that is never covered by the next one.
+    if (isTrump(game.contract, card)) b.classList.add('trump');
     if (legal && !legal.has(card)) b.classList.add('dud');
     if (playable && legal.has(card)) b.classList.add('live');
     if (refused === card) b.classList.add('refused');
@@ -577,32 +617,86 @@ function openMenu() {
     add(inner, 'This hand', '', () => { close(); openLog(); });
 
     const h = house();
-    add(inner, 'Players', h.people === 1 ? 'You and three computers' : 'Two of you, two computers',
-      async () => {
-        close();
-        if (game && !game.winner && !confirm('Start again with these players?')) return;
-        await api.setSettings({ people: h.people === 1 ? 2 : 1 });
-        await api.deal();
-      });
-
-    add(inner, 'Computer skill', SKILL_LABEL[h.skill], async () => {
-      close();
-      await api.setSettings({ skill: h.skill === 'hard' ? 'easy' : 'hard' });
-    });
-
-    add(inner, 'Game to', String(h.target), async () => {
-      close();
-      const next = TARGETS[(TARGETS.indexOf(h.target) + 1) % TARGETS.length];
-      if (game && !game.winner && !confirm(`Start again, playing to ${next}?`)) return;
-      await api.setSettings({ target: next });
-      await api.deal();
-    });
+    add(inner, 'Players', PEOPLE_LABEL[people(h)], () => { close(); openPlayers(); });
+    add(inner, 'Computer skill', SKILL_LABEL[h.skill], () => { close(); openSkill(); });
+    add(inner, 'Game to', `${h.target} points`, () => { close(); openTarget(); });
 
     add(inner, 'New game', '', async () => {
       close();
       if (game && !game.winner && !confirm('Abandon the game in progress?')) return;
       await api.deal();
     });
+  });
+}
+
+// Each of these was a row that silently flipped to the other setting when
+// you pressed it, so there was no way to see what the choices were, or what
+// you were about to change to, before it had already changed. They are
+// lists now, with the one you are on marked.
+
+const blurb = (inner, text) => {
+  const d = document.createElement('div');
+  d.className = 'row note';
+  d.textContent = text;
+  inner.appendChild(d);
+};
+
+// Four at the table whatever happens: Jass is a four hand game. What
+// changes is whether the seat opposite the computer partner is a person.
+const PEOPLE_LABEL = {
+  2: 'Two of you, a computer each',
+  1: 'You and three computers',
+};
+
+const people = (h = house()) => (Number(h.people) === 1 ? 1 : 2);
+
+function openPlayers() {
+  sheet((inner, close) => {
+    const now = people();
+    blurb(inner, 'Four at the table either way, in two partnerships. Your partner '
+      + 'sits opposite you and is always the computer.');
+    for (const n of [2, 1]) {
+      add(inner, PEOPLE_LABEL[n], now === n ? 'Playing' : '', async () => {
+        close();
+        if (n === now) return;
+        if (game && !game.winner && !confirm('Start a new game with these players?')) return;
+        await api.setSettings({ people: n });
+        await api.deal();
+      });
+    }
+  });
+}
+
+function openSkill() {
+  sheet((inner, close) => {
+    const now = house().skill;
+    blurb(inner, 'Hard counts what has been played and feeds points to its partner. '
+      + 'Easy plays anything it is allowed to. This takes effect on the next card.');
+    for (const s of SKILLS) {
+      add(inner, SKILL_LABEL[s], now === s ? 'On' : '', async () => {
+        close();
+        if (s === now) return;
+        await api.setSettings({ skill: s });
+      });
+    }
+  });
+}
+
+const TARGET_NOTE = { 1000: 'about four hands', 1500: 'about six', 3000: 'the full game, about twelve' };
+
+function openTarget() {
+  sheet((inner, close) => {
+    const now = Number(house().target);
+    blurb(inner, 'How many points wins it. Fall short of half that and you are Schneider.');
+    for (const t of TARGETS) {
+      add(inner, `${t} points`, now === t ? 'Playing' : TARGET_NOTE[t], async () => {
+        close();
+        if (t === now) return;
+        if (game && !game.winner && !confirm(`Start a new game, playing to ${t}?`)) return;
+        await api.setSettings({ target: t });
+        await api.deal();
+      });
+    }
   });
 }
 
@@ -673,7 +767,7 @@ function deal(prev) {
   const bots = ['green', 'yellow'];
   // On your own, the other person's chair is played for as well. Which
   // chair that is depends on which one you are sitting in.
-  if (h.people === 1) bots.push(myColor === 'blue' ? 'red' : 'blue');
+  if (people(h) === 1) bots.push(myColor === 'blue' ? 'red' : 'blue');
   return newGame({ target: Number(h.target) || 3000, bots });
 }
 
@@ -698,6 +792,7 @@ const PANEL = `
   <div class="jstatus" id="j-status">Connecting</div>
   <div class="jbid hidden" id="j-bid"></div>
   <div class="jresult hidden" id="j-result"></div>
+  <div class="jtrump hidden" id="j-trump"></div>
   <div class="jhand" id="j-hand"></div>
   <div class="jlast" id="j-last"></div>`;
 

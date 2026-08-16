@@ -189,6 +189,26 @@ their live game.
 
 ## Load-bearing code, do not casually undo
 
+- **`saveSettings` applies the change here as well as sending it.** A game
+  almost always deals a fresh board the moment it changes a house rule, and
+  the snapshot carrying the new rule back has not arrived by then, so
+  `settings()` would hand back the old one and the board would be dealt to
+  it. "Change the players, start again" quietly started again with the old
+  players. Parchís had this too; it only ever showed up online.
+- **A settings row that toggles on tap is not a setting.** Jass shipped with
+  Players, Computer skill and Game to as rows that silently flipped to the
+  other value when pressed, so there was no way to see the choices, or what
+  you were about to change to, before it had changed. They are sheets of
+  options now with the current one marked, the way Parchís does Players.
+  Same for anything added later.
+- **Say what is trumps on the cards, not only on the table.** A badge in the
+  corner of the table naming a suit is no use until you already know which
+  drawing "bells" means, and the whole point of the Swiss pack is that he is
+  learning it. So there is a bar directly above the hand with the sign at a
+  readable size, and every trump in the hand is banded gold along its bottom
+  edge, which is the one part of a card in a fan the next card never covers.
+  With no trump the bar carries more weight, not less: obenabe and undenufe
+  differ only in which end of the pack wins.
 - `booted()` must stay null-safe. It removes the splash 400ms after its first
   call and is called again on every seat and board change; reading through the
   null threw before `render()` and caused three separate reported symptoms.

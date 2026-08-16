@@ -574,6 +574,17 @@ body {
 .row .val { color: var(--ink-dim); font-weight: 500; font-size: 14px; }
 .row.danger { color: var(--red); }
 
+/* A line of explanation at the top of a sheet of choices, so what you are
+   picking between is said before you pick. */
+.row.note {
+  display: block;
+  color: var(--ink-dim);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  padding-top: 2px;
+}
+
 .rules {
   font-size: 13.5px;
   line-height: 1.62;
@@ -880,6 +891,22 @@ body {
   filter: drop-shadow(0 3px 6px rgba(0,0,0,.5));
 }
 .jcard.live:active { transform: translateY(-9px); }
+
+/* Which of your cards are trumps, said on the cards themselves. The bottom
+   edge is the one part of a card in a fan the next card never covers, so
+   that is where the gold goes. */
+.jcard { position: relative; }
+.jcard.trump::after {
+  content: '';
+  position: absolute;
+  left: 6%; right: 6%; bottom: 3.5px;
+  height: 5px;
+  border-radius: 2.5px;
+  background: linear-gradient(90deg, #FFDE85, #E9B33C);
+  box-shadow: 0 0 8px rgba(242,193,78,.9), 0 0 2px rgba(0,0,0,.5);
+  pointer-events: none;
+}
+.jcard.dud.trump::after { opacity: .5; }
 /* A card you may not play sinks and dims rather than vanishing, so you can
    still see what you are holding. */
 .jcard.dud { transform: translateY(7px); opacity: .46; cursor: default; }
@@ -889,6 +916,38 @@ body {
   0%, 100% { transform: translateX(0);   }
   25%      { transform: translateX(-5px); }
   75%      { transform: translateX(5px);  }
+}
+
+/* ── What is trumps ──────────────────────────────────────────────── */
+/* Directly above your own cards. The badge on the table is for glancing at
+   the trick; this one is for the moment you are choosing what to play. */
+
+.jtrump {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin-bottom: 9px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: linear-gradient(rgba(214,169,59,.14), rgba(214,169,59,.07));
+  border: 1px solid rgba(214,169,59,.32);
+}
+.jt-lab { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.jt-lab b { font-size: 16px; font-weight: 800; letter-spacing: -.01em; }
+.jt-lab i {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+.jt-x {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--pop);
+  padding-left: 9px;
+  border-left: 1px solid rgba(214,169,59,.3);
 }
 
 /* ── Naming the contract ─────────────────────────────────────────── */

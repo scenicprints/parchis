@@ -333,15 +333,18 @@ async function connect() {
 
 const saveGame = (state) => fs.setDoc(GAME, state);
 
+// Held here as well as sent, not only sent. A game almost always deals a
+// fresh board the moment it changes a house rule, and the snapshot carrying
+// the new rule back has not arrived by then: `settings()` would still hand
+// back the old one and the new board would be dealt to it. That is
+// "change the players, start again" quietly starting again with the old
+// players. The snapshot confirms this a moment later either way.
 function saveSettings(id, patch) {
-  if (LOCAL) {
-    table = { ...(table || {}), settings: { ...(table?.settings || {}),
-      [id]: { ...settingsFor(id), ...patch } } };
-    return Promise.resolve();
-  }
-  return fs.setDoc(TABLE, {
-    settings: { ...(table?.settings || {}), [id]: { ...settingsFor(id), ...patch } },
-  }, { merge: true });
+  const settings = { ...(table?.settings || {}),
+    [id]: { ...settingsFor(id), ...patch } };
+  table = { ...(table || {}), settings };
+  if (LOCAL) return Promise.resolve();
+  return fs.setDoc(TABLE, { settings }, { merge: true });
 }
 
 // A seat is held by this browser's anonymous id, and that id does not
