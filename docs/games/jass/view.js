@@ -15,11 +15,13 @@ import {
   ORDER, TEAM, NAMES, CONTRACTS, SIDES, BOARD_REV,
   nextSeat, partnerOf, otherTeam, contractLabel,
   legalPlays, canPlay, trickLeader, cardStrength, trumpSuit, isTrump, pointsOf,
-  newGame, dealHand, gather, apply, STOECK, MATCH_BONUS,
+  weisLabel, newGame, dealHand, gather, apply, STOECK, MATCH_BONUS,
 } from './rules.js';
 
 import { actFor } from './bot.js';
-import { SUITS, suitOf, cardFace, cardBack, suitMark, SUIT_NAME, cardName } from './cards.js';
+import {
+  SUITS, suitOf, cardOf, cardFace, cardBack, suitMark, SUIT_NAME, cardName, KONIG, OBER,
+} from './cards.js';
 import { sheet, addRow as add } from '../../ui.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -36,6 +38,8 @@ let shown = 'red';     // whose cards the panel is showing, which only moves in 
 let refused = null;    // a card that was tapped and is not legal, for one flash
 let pending = null;    // the timer for the next step nobody has to choose
 let pendingFor = null; // the board revision that step belongs to
+let swept = '';        // the trick already animated off the table
+let prev = null;       // the last board drawn, for spotting what just changed
 
 const TRICK_HOLD = 1150;   // long enough to see what took the trick
 const BOT_PAUSE = 520;
@@ -88,6 +92,12 @@ function nameOf(seat) {
 // A partnership is one person and the computer across from them, so it goes
 // by that person's name.
 const teamName = (t) => nameOf(t);
+
+// The same thing, except your own side is "You". Which column is yours is
+// the first question the scoreboard has to answer, and a name does not
+// answer it as fast as the word does.
+const sideName = (t) =>
+  (!LOCAL && myColor && t === TEAM[myColor] ? 'You' : teamName(t));
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Drawing
@@ -147,9 +157,9 @@ function renderSlate() {
     <div class="jgoal"></div>
     <div class="jteam ${theirs} right"><span class="jt-s"></span><span class="jt-n"></span></div>`;
   const [a, b] = el.querySelectorAll('.jteam');
-  a.querySelector('.jt-n').textContent = teamName(mine);
+  a.querySelector('.jt-n').textContent = sideName(mine);
   a.querySelector('.jt-s').textContent = game.score[mine];
-  b.querySelector('.jt-n').textContent = teamName(theirs);
+  b.querySelector('.jt-n').textContent = sideName(theirs);
   b.querySelector('.jt-s').textContent = game.score[theirs];
   el.querySelector('.jgoal').textContent = `to ${game.target}`;
 }
@@ -200,6 +210,15 @@ function renderTrick() {
     el.appendChild(slot);
   }
 
+  // A trick that has just been swept up slides off to whoever took it. Four
+  // cards blinking out of existence is the single moment in a hand that
+  // most needs saying, and it was being said by a line of grey text.
+  const key = `${game.hand}:${game.wins.red + game.wins.blue}`;
+  if (!over && !held.length && game.last?.plays && swept !== key) {
+    swept = key;
+    sweepTo(el, game.last, at[game.last.by]);
+  }
+
   const badge = $('j-contract');
   if (!badge) return;
   if (!game.contract) {
@@ -217,6 +236,107 @@ function renderTrick() {
   renderTally();
 }
 
+// The four cards of a finished trick, laid back where they were and then
+// sent to the seat that took them. They are drawn on top of whatever comes
+// next and taken off the page when they land, so nothing here is ever in
+// the way of the following trick.
+function sweepTo(el, last, where) {
+  const p = places();
+  const at = {};
+  for (const [w, seat] of Object.entries(p)) at[seat] = w;
+
+  const going = [];
+  for (const play of last.plays) {
+    const slot = document.createElement('div');
+    slot.className = `jplay ${at[play.by]} sweeping`;
+    slot.innerHTML = cardFace(play.card, { w: 54 });
+    el.appendChild(slot);
+    going.push(slot);
+  }
+  // One frame at rest first, or the browser has nothing to move away from
+  // and the cards simply appear where they are going.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      for (const s of going) s.classList.add(`to-${where}`);
+    });
+  });
+  setTimeout(() => { for (const s of going) s.remove(); }, 560);
+}
+
+// ── Saying the thing out loud ────────────────────────────────────────
+//
+// A hand has four or five moments in it that a table would say aloud: the
+// contract, anybody's Weis, a Stöck, and who took the hand. All of them
+// used to happen in silence apart from one line of grey text under the
+// cards, which is not where anybody is looking.
+
+let sayTimer = null;
+
+function announce(inner, hold = 2300) {
+  const el = $('j-say');
+  if (!el) return;
+  el.innerHTML = inner;
+  el.classList.add('on');
+  clearTimeout(sayTimer);
+  sayTimer = setTimeout(() => el.classList.remove('on'), hold);
+}
+
+const sayRow = (big, small) =>
+  `<b>${big}</b>${small ? `<i>${small}</i>` : ''}`;
+
+// Both cards of a Stöck actually played, which is when a table would hear
+// about it. It is known from the moment the trump is named, but saying so
+// then would tell the other side something they have not earned.
+function stoeckOut(s) {
+  const t = trumpSuit(s.contract);
+  if (t === null || !s.stoeck) return false;
+  const seen = new Set([...(s.taken?.red || []), ...(s.taken?.blue || []),
+    ...(s.trick || []).map((p) => p.card)]);
+  return seen.has(cardOf(t, KONIG)) && seen.has(cardOf(t, OBER));
+}
+
+// What changed between the last board this device drew and this one, and
+// which of those changes is worth interrupting for.
+function notice(before, after) {
+  if (!after) return;
+  const fresh = !before || before.hand !== after.hand;
+
+  if (after.result && (fresh || !before.result)) {
+    const r = after.result;
+    const mine = TEAM[handSeat() || 'red'];
+    const took = r.gained[mine] > r.gained[otherTeam(mine)] ? mine
+      : r.gained[otherTeam(mine)] > r.gained[mine] ? otherTeam(mine) : null;
+    if (r.match) {
+      announce(sayRow('Match', `${sideName(r.match)} took all nine`), 3000);
+    } else {
+      announce(sayRow(took ? `${sideName(took)} took the hand` : 'The hand was level',
+        `${r.gained[mine]} to ${r.gained[otherTeam(mine)]}`), 3000);
+    }
+    return;                       // one thing at a time, and this is the loudest
+  }
+
+  if (after.contract && (fresh || !before.contract)) {
+    const c = after.contract;
+    const t = trumpSuit(c);
+    announce(`${t === null
+      ? `<span class="jarrow big">${c.kind === 'top' ? '↑' : '↓'}</span>`
+      : suitMark(SUITS[t], 30)}${sayRow(contractLabel(c),
+      `${nameOf(c.by)}${after.shoved ? ', shoved' : ''} · ×${c.factor}`)}`);
+    return;
+  }
+
+  if (after.weis?.team && after.weis.points?.[after.weis.team] && (fresh || !before.weis)) {
+    const w = after.weis;
+    announce(sayRow(`${nameOf(w.best.seat)} shows ${weisLabel(w.best).toLowerCase()}`,
+      `${w.points[w.team]} for ${sideName(w.team)}`), 2800);
+    return;
+  }
+
+  if (stoeckOut(after) && !(before && !fresh && stoeckOut(before))) {
+    announce(sayRow('Stöck', `${nameOf(after.stoeck)} held the König and Ober · 20`));
+  }
+}
+
 // How the hand is going so far: tricks taken and what they were worth.
 // Both of those are public. The cards went down face up, and a Swiss table
 // expects you to have been counting them, so this only saves the addition.
@@ -230,13 +350,14 @@ function renderTally() {
   const mine = TEAM[handSeat() || 'red'];
   const theirs = otherTeam(mine);
   el.className = 'jtally';
-  el.innerHTML = `<span class="jw ${mine}"></span><span class="jsep">–</span>
-    <span class="jw ${theirs}"></span><span class="jp"></span>`;
+  el.innerHTML = `<span class="jcap">tricks</span>
+    <span class="jw ${mine}"></span><span class="jsep">–</span><span class="jw ${theirs}"></span>
+    <span class="jcap on">points</span><span class="jp"></span>`;
   const [a, b] = el.querySelectorAll('.jw');
   a.textContent = game.wins[mine];
   b.textContent = game.wins[theirs];
   el.querySelector('.jp').textContent =
-    `${pointsOf(game.contract, game.taken[mine])} · ${pointsOf(game.contract, game.taken[theirs])}`;
+    `${pointsOf(game.contract, game.taken[mine])} – ${pointsOf(game.contract, game.taken[theirs])}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -256,11 +377,20 @@ function renderPanel() {
   if (game.phase === 'over') {
     status.classList.add('over');
     const won = game.winner;
-    status.textContent = !LOCAL && won === TEAM[myColor]
-      ? 'You win' : `${teamName(won)} wins`;
+    status.textContent = `${sideName(won)} win${sideName(won) === 'You' ? '' : 's'} it, `
+      + `${game.score[won]} to ${game.score[otherTeam(won)]}`;
     renderResult(true);
   } else if (game.phase === 'hand') {
-    status.textContent = 'Hand over';
+    // "Hand over" said nothing at all about the thing you most want to
+    // know at that moment, which is who took it.
+    const r = game.result;
+    const mine = TEAM[handSeat() || 'red'];
+    const took = !r ? null
+      : r.gained[mine] > r.gained[otherTeam(mine)] ? mine
+        : r.gained[otherTeam(mine)] > r.gained[mine] ? otherTeam(mine) : null;
+    if (took && took === mine) status.classList.add('you');
+    status.textContent = !r ? 'Hand over'
+      : took ? `${sideName(took)} took the hand` : 'The hand was level';
     renderResult(false);
   } else if (game.phase === 'bid') {
     if (game.turn === seat && iPlay(seat)) {
@@ -430,8 +560,8 @@ function renderResult(final) {
   head.className = 'jrhead';
   head.innerHTML = '<span class="jr-l"></span><span class="jr-a"></span><span class="jr-b"></span>';
   head.children[0].textContent = `${contractLabel(r.contract)} ×${r.factor}`;
-  head.children[1].textContent = teamName(mine);
-  head.children[2].textContent = teamName(theirs);
+  head.children[1].textContent = sideName(mine);
+  head.children[2].textContent = sideName(theirs);
   box.appendChild(head);
 
   const side = (t, v) => (v ? String(v) : '—');
@@ -599,10 +729,28 @@ function unschedule() {
 // acknowledge it would put the whole turn machine behind a round trip on
 // whatever signal the phone happens to have.
 function commit(next) {
-  game = next;
-  render();
+  adopt(next);
   Promise.resolve(api.commit(next)).catch(() => {});
   schedule();
+}
+
+// Every board this device shows arrives one of two ways: it worked it out
+// itself, or it came off the wire. Both come through here, so what changed
+// is noticed once wherever the board came from.
+//
+// On one device the hub never calls update() at all, because there is no
+// wire to echo off, so hanging the announcements off update() alone meant
+// they simply did not happen in ?local=1. Announcing twice is not a risk:
+// the second time round `before` is the board just adopted, so nothing has
+// changed and nothing is said.
+function adopt(state) {
+  const before = prev;
+  prev = state;
+  game = state;
+  render();
+  // The first board of a session is not a moment in the hand. Shouting the
+  // contract at somebody who has just opened the app is only noise.
+  if (before) notice(before, state);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -782,6 +930,7 @@ const STAGE = `
           <div class="jcontract hidden" id="j-contract"></div>
           <div class="jtally hidden" id="j-tally"></div>
           <div class="jtrick" id="j-trick"></div>
+          <div class="jsay" id="j-say"></div>
         </div>
         <div class="jseat right" id="j-right"></div>
       </div>
@@ -802,6 +951,8 @@ function mount(handle) {
   uid = handle.uid;
   refused = null;
   shown = 'red';
+  swept = '';
+  prev = null;
   unschedule();
 
   $('game-stage').innerHTML = STAGE;
@@ -814,11 +965,10 @@ function mount(handle) {
     update(state, ctx) {
       table = ctx.table;
       myColor = ctx.me;
-      game = state;
       // A board this device has not seen before, so whatever step was
       // waiting on the old one is stale. schedule() will look again.
       if (pending && state.rev !== pendingFor) unschedule();
-      render();
+      adopt(state);
       schedule();
     },
     // Whose move it is, in words the lobby can show without knowing the
@@ -830,8 +980,10 @@ function mount(handle) {
     },
     destroy() {
       unschedule();
+      clearTimeout(sayTimer);
       api = null;
       game = null;
+      prev = null;
     },
   };
 }

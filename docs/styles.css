@@ -766,6 +766,9 @@ body {
   max-height: 340px;
   align-self: center;
   border-radius: 20px;
+  /* A trick on its way to the winner leaves the table, and without this it
+     carries on across the trump bar and the status line underneath. */
+  overflow: hidden;
   background:
     radial-gradient(75% 70% at 50% 42%, #22503C 0%, #17392A 62%, #102A1F 100%);
   box-shadow: inset 0 0 0 1px rgba(214,169,59,.16),
@@ -810,13 +813,20 @@ body {
 .jtally .jw.red  { color: var(--red);  }
 .jtally .jw.blue { color: var(--blue); }
 .jtally .jsep { opacity: .5; font-weight: 600; }
-.jtally .jp {
-  margin-left: 4px;
+/* Two bare pairs of numbers in a corner say nothing about what they count. */
+.jtally .jcap {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  opacity: .6;
+}
+.jtally .jcap.on {
+  margin-left: 3px;
   padding-left: 7px;
   border-left: 1px solid rgba(255,255,255,.14);
-  font-size: 11px;
-  font-weight: 600;
 }
+.jtally .jp { font-size: 12px; font-weight: 700; }
 
 /* The four cards, laid where the people who played them are sitting. */
 .jtrick { position: absolute; inset: 0; }
@@ -841,6 +851,58 @@ body {
   outline: 2.5px solid var(--pop);
   outline-offset: -1px;
   border-radius: 7px;
+}
+
+/* A finished trick goes to whoever took it, rather than blinking out of
+   existence. All four converge on that seat, so the direction is the
+   answer to who won it. */
+.jplay.sweeping {
+  transition: transform .45s var(--tap), opacity .45s ease-in;
+  z-index: 3;
+}
+.jplay.sweeping.to-bottom { transform: translate(-50%,  300%) scale(.5); opacity: 0; }
+.jplay.sweeping.to-top    { transform: translate(-50%, -400%) scale(.5); opacity: 0; }
+.jplay.sweeping.to-left   { transform: translate(-460%, -50%) scale(.5); opacity: 0; }
+.jplay.sweeping.to-right  { transform: translate( 360%, -50%) scale(.5); opacity: 0; }
+
+/* ── Saying it out loud ──────────────────────────────────────────── */
+/* The contract, a Weis, a Stöck, who took the hand. Across the middle of
+   the table for a couple of seconds, and never in the way of a tap. */
+.jsay {
+  position: absolute;
+  left: 8px; right: 8px;
+  top: 50%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 11px 14px;
+  border-radius: 16px;
+  background: linear-gradient(rgba(24,32,26,.97), rgba(14,22,17,.97));
+  border: 1px solid rgba(214,169,59,.45);
+  box-shadow: 0 12px 34px rgba(0,0,0,.6);
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-50%) scale(.9);
+  transition: opacity .2s, transform .28s var(--tap);
+}
+.jsay.on { opacity: 1; transform: translateY(-50%) scale(1); }
+.jsay b {
+  display: block;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  line-height: 1.2;
+}
+.jsay i {
+  display: block;
+  margin-top: 3px;
+  font-style: normal;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pop);
 }
 
 /* ── The panel ───────────────────────────────────────────────────── */

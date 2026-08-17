@@ -187,6 +187,16 @@ deploy sat invisible and the phone stayed a version behind.
 **Do not write to `parchis/table` or `parchis/game` while testing.** That is
 their live game.
 
+**On one device the hub never calls `update()`.** `commit()` returns early
+when `LOCAL`, so nothing echoes back and `update()` only fires when a game
+is dealt. Anything hung off `update()` alone therefore does not happen at
+all in `?local=1`, which is exactly where a change gets tried first. Jass
+routes both the boards it works out itself and the boards off the wire
+through one `adopt()` for this reason.
+
+**`classList.add('')` throws**, and a throw inside `render()` takes the
+whole screen with it. `add(cond ? 'x' : '')` is the shape that does it.
+
 ## Load-bearing code, do not casually undo
 
 - **`saveSettings` applies the change here as well as sending it.** A game
@@ -201,6 +211,19 @@ their live game.
   you were about to change to, before it had changed. They are sheets of
   options now with the current one marked, the way Parchís does Players.
   Same for anything added later.
+- **A hand has five moments that have to be said out loud**, and none of
+  them were: the contract being named, anybody's Weis, a Stöck, a trick
+  going to whoever took it, and who took the hand. They all existed only as
+  one line of grey text under the cards, which is not where anybody looks.
+  Now: a banner across the middle of the table for the first three and the
+  last, the four cards of a finished trick sliding to the seat that took
+  them, and a headline over the scoreboard. He reported this after playing
+  a whole game, so treat any new game the same way: work out where the
+  moments are before shipping, not after.
+- **Stöck is announced when both its cards have actually been played**, not
+  when the trump is named. The engine knows the holder from the moment the
+  contract is chosen and it is sat there in the game document, but saying
+  so early tells the other side something they have not earned.
 - **Say what is trumps on the cards, not only on the table.** A badge in the
   corner of the table naming a suit is no use until you already know which
   drawing "bells" means, and the whole point of the Swiss pack is that he is

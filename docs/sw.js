@@ -2,7 +2,7 @@
 // no signal. Only our own files are cached; Firebase always goes to the
 // network, and Firestore does its own offline work underneath us.
 
-const CACHE = 'parchis-v7';
+const CACHE = 'parchis-v8';
 const SHELL = [
   './',
   'index.html',
